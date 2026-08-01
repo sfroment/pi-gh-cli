@@ -3,7 +3,16 @@
   "version": "1.0.0",
   "description": "Pi extension wrapping the GitHub gh CLI as a single typed tool.",
   "private": true,
-  "pi": { "extensions": ["./index.ts"] },
-  "scripts": { "pretest": "./scripts/link-pi-deps.sh", "test": "bun test", "test:watch": "bun test --watch" },
-  "devDependencies": { "@types/bun": "latest" }
+  "pi": {
+    "extensions": ["./index.ts"]
+  },
+  "scripts": {
+    "pretest": "./scripts/link-pi-deps.sh",
+    "test": "bun test",
+    "test:watch": "bun test --watch"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^7.0.2"
+  }
 }

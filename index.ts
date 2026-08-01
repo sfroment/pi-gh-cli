@@ -3,7 +3,11 @@ import {
 	DEFAULT_MAX_LINES,
 	formatSize,
 	truncateTail,
+	type ExtensionAPI,
 } from "@earendil-works/pi-coding-agent";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { Type } from "typebox";
 
 /** Commands that are destructive/unrecoverable — refused unless forceDangerous is set. */
 const DANGEROUS_COMMANDS = ["repo delete", "release delete"];
@@ -179,4 +183,108 @@ export async function runGh(
 		},
 		isError: code !== 0,
 	};
+}
+
+const baseDir = dirname(fileURLToPath(import.meta.url));
+const skillPath = join(baseDir, "skill", "SKILL.md");
+
+const RELEVANT_PROMPT = /\b(github|gh cli|pr |pull request|issue|repo|release|workflow|action|gist)\b/i;
+
+/**
+ * Guidance injected into the system prompt when the user's message looks
+ * GitHub-related. Kept short — the full reference lives in the SKILL.md.
+ */
+const GH_GUIDANCE = `## GitHub CLI (gh) guidance
+
+The \`gh\` tool wraps the GitHub CLI (\`gh\`) as a single typed tool. Pass the gh subcommand as \`subcommand\` and its flags as \`args\` (key=value). Booleans become bare flags (e.g. \`{ web: true }\` → \`--web\`). Arrays become repeated flags (e.g. \`{ label: ["bug", "urgent"] }\` → \`--label bug --label urgent\`).
+
+Key patterns:
+- List PRs: \`subcommand: "pr list"\`, \`args: { state: "open", limit: 10 }\`.
+- Structured output: \`jsonFields: ["number", "title", "state"]\` → \`--json number,title,state\`. Use \`jq\` to filter/project.
+- Target a repo: \`repo: "owner/repo"\` → \`--repo owner/repo\`.
+- Destructive ops (\`repo delete\`, \`release delete\`) require \`forceDangerous: true\` and explicit user confirmation.
+
+If the tool reports you are not authenticated, run \`gh auth login\` via bash.`;
+
+export default function ghExtension(pi: ExtensionAPI) {
+	// Make the bundled SKILL.md discoverable as a skill.
+	pi.on("resources_discover", () => ({
+		skillPaths: [skillPath],
+	}));
+
+	// Inject concise guidance when the prompt looks GitHub-related.
+	pi.on("before_agent_start", (event) => {
+		if (!RELEVANT_PROMPT.test(event.prompt)) return;
+		return {
+			systemPrompt: `${event.systemPrompt}\n\n${GH_GUIDANCE}\n`,
+		};
+	});
+
+	pi.registerTool({
+		name: "gh",
+		label: "GitHub CLI",
+		description:
+			"Call the GitHub CLI (gh) to interact with repositories, pull requests, issues, releases, workflows, gists, and more. " +
+			"Pass the gh subcommand as `subcommand` (e.g. 'pr list', 'repo view', 'issue list') and its flags as `args` (key=value). " +
+			"Use `jsonFields` + `jq` for structured output, `repo` to target a specific repository, and `limit` to cap results. " +
+			"Destructive operations (repo delete, release delete) require `forceDangerous: true`.",
+		promptSnippet:
+			"Interact with GitHub (repos, PRs, issues, releases, workflows, gists) via the gh CLI.",
+		promptGuidelines: [
+			"Use the `gh` tool when the user asks about GitHub — repos, PRs, issues, releases, workflows, or gists. It calls the gh CLI directly.",
+			"Pass the gh subcommand as `subcommand` (e.g. 'pr list') and its flags as `args` (key=value). Booleans become bare flags, arrays become repeated flags.",
+			"Use `jsonFields` + `jq` for structured output when you need to parse results programmatically.",
+			"Destructive operations (`repo delete`, `release delete`) require `forceDangerous: true`. Always confirm with the user before using it.",
+			"If the tool reports you are not authenticated, tell the user to run `gh auth login`.",
+		],
+		parameters: Type.Object({
+			subcommand: Type.String({
+				description:
+					"The gh CLI subcommand (e.g. 'repo list', 'pr list', 'issue view 42'). Split on spaces into the command path.",
+			}),
+			args: Type.Optional(
+				Type.Record(
+					Type.String(),
+					Type.Union([Type.String(), Type.Number(), Type.Boolean(), Type.Array(Type.String())]),
+					{
+						description:
+							"Command flags as a key/value map. Booleans become bare flags (e.g. {web: true} → web). Strings/numbers become key=value tokens. Arrays become repeated tokens.",
+					},
+				),
+			),
+			repo: Type.Optional(
+				Type.String({
+					description: "Target repository as owner/repo (translates to --repo owner/repo).",
+				}),
+			),
+			jsonFields: Type.Optional(
+				Type.Array(
+					Type.String(),
+					{ description: "GitHub fields to return as JSON (translates to --json field1,field2,...)." },
+				),
+			),
+			jq: Type.Optional(
+				Type.String({ description: "jq expression to filter/project JSON output (translates to --jq expr)." }),
+			),
+			limit: Type.Optional(
+				Type.Integer({ minimum: 1, description: "Maximum number of results (translates to --limit N)." }),
+			),
+			timeoutSeconds: Type.Optional(
+				Type.Integer({
+					minimum: 1,
+					maximum: 120,
+					default: 30,
+					description: "Command timeout in seconds (default 30, max 120).",
+				}),
+			),
+			forceDangerous: Type.Optional(
+				Type.Boolean({
+					description: "Opt-in flag to allow destructive commands (repo delete, release delete). Requires explicit user confirmation.",
+				}),
+			),
+		}),
+		async execute(_toolCallId, params: GhParams, signal) {
+			return runGh(params, (cmd, args, opts) => pi.exec(cmd, args, opts), signal);
+		},
+	});
 }

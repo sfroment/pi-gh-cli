@@ -1,4 +1,3 @@
-import { describe, expect, test } from "bun:test";
 import { assertSafeCommand, buildArgv, formatOutput, runGh, type ExecResult, type GhExec, type GhParams } from "./index.ts";
 import { describe, expect, mock, test } from "bun:test";
 

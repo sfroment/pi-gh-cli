@@ -188,7 +188,7 @@ export async function runGh(
 const baseDir = dirname(fileURLToPath(import.meta.url));
 const skillPath = join(baseDir, "skill", "SKILL.md");
 
-const RELEVANT_PROMPT = /\b(github|gh cli|pr |pull request|issue|repo|release|workflow|action|gist)\b/i;
+const RELEVANT_PROMPT = /\b(github|gh cli|pr |pull request|issue|repo|release|workflow|gist)\b/i;
 
 /**
  * Guidance injected into the system prompt when the user's message looks

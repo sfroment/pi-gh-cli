@@ -14,5 +14,10 @@
   "devDependencies": {
     "@types/bun": "latest",
     "typescript": "^7.0.2"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
   }
 }

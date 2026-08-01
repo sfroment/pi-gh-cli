@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { buildArgv, type GhParams } from "./index.ts";
+import { assertSafeCommand, buildArgv, type GhParams } from "./index.ts";
 
 describe("buildArgv", () => {
 	test("1. subcommand split on spaces", () => {
@@ -90,5 +90,52 @@ describe("buildArgv", () => {
 
 	test("13b. whitespace-only subcommand throws", () => {
 		expect(() => buildArgv({ subcommand: "   " })).toThrow(/subcommand/i);
+	});
+});
+
+describe("assertSafeCommand", () => {
+	test("1. repo delete refused without opt-in", () => {
+		expect(() => assertSafeCommand({ subcommand: "repo delete" })).toThrow(/repo delete/);
+	});
+
+	test("2. repo delete with args is refused as unrecoverable", () => {
+		expect(() =>
+			assertSafeCommand({ subcommand: "repo delete", args: { yes: true } }),
+		).toThrow(/unrecoverable/);
+	});
+
+	test("3. repo delete with forceDangerous is allowed", () => {
+		expect(() =>
+			assertSafeCommand({ subcommand: "repo delete", forceDangerous: true }),
+		).not.toThrow();
+	});
+
+	test("4. release delete refused", () => {
+		expect(() =>
+			assertSafeCommand({ subcommand: "release delete" }),
+		).toThrow(/release delete/);
+	});
+
+	test("5. release delete with forceDangerous is allowed", () => {
+		expect(() =>
+			assertSafeCommand({ subcommand: "release delete", forceDangerous: true }),
+		).not.toThrow();
+	});
+
+	test("6. pr merge is allowed", () => {
+		expect(() =>
+			assertSafeCommand({ subcommand: "pr merge 123" }),
+		).not.toThrow();
+	});
+
+	test("7. issue close is allowed", () => {
+		expect(() =>
+			assertSafeCommand({ subcommand: "issue close 42" }),
+		).not.toThrow();
+	});
+
+	test("8. safe commands are allowed", () => {
+		expect(() => assertSafeCommand({ subcommand: "repo list" })).not.toThrow();
+		expect(() => assertSafeCommand({ subcommand: "pr list" })).not.toThrow();
 	});
 });

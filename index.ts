@@ -1,3 +1,6 @@
+/** Commands that are destructive/unrecoverable — refused unless forceDangerous is set. */
+const DANGEROUS_COMMANDS = ["repo delete", "release delete"];
+
 export type GhParams = {
 	subcommand: string;
 	args?: Record<string, string | number | boolean | string[] | null | undefined>;
@@ -53,4 +56,21 @@ export function buildArgv(params: GhParams): string[] {
 	}
 
 	return argv;
+}
+
+/**
+ * Guard against destructive gh operations that are hard or impossible to
+ * reverse. The tool refuses these unless the caller explicitly sets
+ * `forceDangerous: true`, which keeps the LLM from nuking a repo or release
+ * by accident.
+ */
+export function assertSafeCommand(params: GhParams): void {
+	const normalized = params.subcommand.trim().toLowerCase().split(/\s+/).slice(0, 2).join(" ");
+	if (DANGEROUS_COMMANDS.some((cmd) => normalized.startsWith(cmd))) {
+		if (params.forceDangerous === true) return;
+		throw new Error(
+			`Refusing \`${normalized}\` from the gh tool — this operation is unrecoverable. ` +
+				"To override, set `forceDangerous: true` and confirm with the user first.",
+		);
+	}
 }

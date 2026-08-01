@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { assertSafeCommand, buildArgv, type GhParams } from "./index.ts";
+import { assertSafeCommand, buildArgv, formatOutput, type GhParams } from "./index.ts";
 
 describe("buildArgv", () => {
 	test("1. subcommand split on spaces", () => {
@@ -137,5 +137,23 @@ describe("assertSafeCommand", () => {
 	test("8. safe commands are allowed", () => {
 		expect(() => assertSafeCommand({ subcommand: "repo list" })).not.toThrow();
 		expect(() => assertSafeCommand({ subcommand: "pr list" })).not.toThrow();
+	});
+});
+
+describe("formatOutput", () => {
+	test("1. stdout only", () => {
+		expect(formatOutput("hello", "")).toBe("hello");
+	});
+
+	test("2. stderr appended with label", () => {
+		expect(formatOutput("out", "err")).toBe("out\n\nstderr:\nerr");
+	});
+
+	test("3. empty produces placeholder", () => {
+		expect(formatOutput("", "")).toBe("(no output)");
+	});
+
+	test("4. whitespace-only is treated as empty", () => {
+		expect(formatOutput("   \n  ", "  ")).toBe("(no output)");
 	});
 });

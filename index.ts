@@ -74,3 +74,14 @@ export function assertSafeCommand(params: GhParams): void {
 		);
 	}
 }
+
+/**
+ * Format stdout/stderr into a single human-readable string.
+ * If both are empty/whitespace, returns a placeholder.
+ */
+export function formatOutput(stdout: string, stderr: string): string {
+	const chunks: string[] = [];
+	if (stdout.trim().length > 0) chunks.push(stdout.trimEnd());
+	if (stderr.trim().length > 0) chunks.push(`stderr:\n${stderr.trimEnd()}`);
+	return chunks.join("\n\n") || "(no output)";
+}

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { assertSafeCommand, buildArgv, formatOutput, type GhParams } from "./index.ts";
+import { assertSafeCommand, buildArgv, formatOutput, runGh, type ExecResult, type GhExec, type GhParams } from "./index.ts";
+import { describe, expect, mock, test } from "bun:test";
 
 describe("buildArgv", () => {
 	test("1. subcommand split on spaces", () => {
@@ -155,5 +156,124 @@ describe("formatOutput", () => {
 
 	test("4. whitespace-only is treated as empty", () => {
 		expect(formatOutput("   \n  ", "  ")).toBe("(no output)");
+	});
+});
+
+/**
+ * Fake exec: returns a canned ExecResult, recording the call so tests can
+ * assert on the argv that was built. This is the only system boundary mocked
+ * (per the TDD mocking skill — mock at boundaries, never internal collaborators).
+ */
+function makeFakeExec(result: ExecResult): GhExec & { calls: Parameters<GhExec>[] } {
+	const calls: Parameters<GhExec>[] = [];
+	const fn = mock(async (_cmd: string, args: string[], opts) => {
+		calls.push([_cmd, args, opts]);
+		return result;
+	}) as unknown as GhExec & { calls: Parameters<GhExec>[] };
+	fn.calls = calls;
+	return fn;
+}
+
+describe("runGh", () => {
+	test("1. builds argv from params and passes it to exec", async () => {
+		const exec = makeFakeExec({ stdout: "ok", code: 0 });
+		await runGh({ subcommand: "pr list", args: { state: "open" } }, exec);
+		expect(exec.calls[0][0]).toBe("gh");
+		expect(exec.calls[0][1]).toEqual(["pr", "list", "state=open"]);
+	});
+
+	test("2. success echoes command, exit code, and output", async () => {
+		const exec = makeFakeExec({ stdout: "repo-list-output", code: 0 });
+		const res = await runGh({ subcommand: "repo list" }, exec);
+		expect(res.isError).toBe(false);
+		expect(res.content[0].text).toContain("Command: gh repo list");
+		expect(res.content[0].text).toContain("Exit code: 0");
+		expect(res.content[0].text).toContain("repo-list-output");
+	});
+
+	test("3. non-zero exit sets isError true and includes exit code + stderr", async () => {
+		const exec = makeFakeExec({ stdout: "", stderr: "not found", code: 1 });
+		const res = await runGh({ subcommand: "repo view" }, exec);
+		expect(res.isError).toBe(true);
+		expect(res.content[0].text).toContain("Exit code: 1");
+		expect(res.content[0].text).toContain("not found");
+	});
+
+	test("4. exec rejection (ENOENT) is wrapped with install hint", async () => {
+		const failing: GhExec = async () => {
+			throw new Error("spawn ENOENT");
+		};
+		await expect(runGh({ subcommand: "repo list" }, failing)).rejects.toThrow(/installed and on PATH/);
+	});
+
+	test("5. not-authed returns isError with notAuthed detail and auth login guidance", async () => {
+		const exec = makeFakeExec({
+			stdout: "",
+			stderr: "You are not logged in to any GitHub hosts. Run gh auth login to authenticate.",
+			code: 4,
+		});
+		const res = await runGh({ subcommand: "repo list" }, exec);
+		expect(res.isError).toBe(true);
+		expect(res.details).toMatchObject({ notAuthed: true });
+		expect(res.content[0].text).toContain("gh auth login");
+	});
+
+	test("6. repo delete refused before exec is called", async () => {
+		const exec = makeFakeExec({ stdout: "", code: 0 });
+		await expect(
+			runGh({ subcommand: "repo delete" }, exec),
+		).rejects.toThrow(/repo delete/);
+		expect(exec.calls).toHaveLength(0);
+	});
+
+	test("7. missing subcommand throws", async () => {
+		const exec = makeFakeExec({ stdout: "", code: 0 });
+		await expect(runGh({} as GhParams, exec)).rejects.toThrow(/subcommand/);
+	});
+
+	test("8. large output is truncated and flagged", async () => {
+		const huge = Array.from({ length: 5000 }, () => "line of content").join("\n");
+		const exec = makeFakeExec({ stdout: huge, code: 0 });
+		const res = await runGh({ subcommand: "repo list" }, exec);
+		expect(res.details).toMatchObject({ truncated: true });
+		expect(res.content[0].text).toContain("Output truncated");
+	});
+
+	test("9. timeout 9999 is clamped to 120s", async () => {
+		const exec = makeFakeExec({ stdout: "ok", code: 0 });
+		await runGh({ subcommand: "repo list", timeoutSeconds: 9999 }, exec);
+		expect(exec.calls[0][2].timeout).toBe(120000);
+	});
+
+	test("10. no timeoutSeconds defaults to 30s", async () => {
+		const exec = makeFakeExec({ stdout: "ok", code: 0 });
+		await runGh({ subcommand: "repo list" }, exec);
+		expect(exec.calls[0][2].timeout).toBe(30000);
+	});
+
+	test("11. timeoutSeconds 0 is clamped to min 1s", async () => {
+		const exec = makeFakeExec({ stdout: "ok", code: 0 });
+		await runGh({ subcommand: "repo list", timeoutSeconds: 0 }, exec);
+		expect(exec.calls[0][2].timeout).toBe(1000);
+	});
+
+	test("12. repo override appears in argv", async () => {
+		const exec = makeFakeExec({ stdout: "ok", code: 0 });
+		await runGh({ subcommand: "pr list", repo: "owner/repo" }, exec);
+		expect(exec.calls[0][1]).toContain("--repo");
+		expect(exec.calls[0][1]).toContain("owner/repo");
+	});
+
+	test("13. jsonFields + jq appear in argv", async () => {
+		const exec = makeFakeExec({ stdout: "[]", code: 0 });
+		await runGh({
+			subcommand: "pr list",
+			jsonFields: ["number", "title"],
+			jq: ".[].title",
+		}, exec);
+		expect(exec.calls[0][1]).toContain("--json");
+		expect(exec.calls[0][1]).toContain("number,title");
+		expect(exec.calls[0][1]).toContain("--jq");
+		expect(exec.calls[0][1]).toContain(".[].title");
 	});
 });

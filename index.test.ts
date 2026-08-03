@@ -6,28 +6,30 @@ describe("buildArgv", () => {
 		expect(buildArgv({ subcommand: "repo list" })).toEqual(["repo", "list"]);
 	});
 
-	test("2. args become key=value tokens", () => {
+	test("2. args become --flag value token pairs", () => {
 		expect(
 			buildArgv({ subcommand: "pr list", args: { state: "open", limit: 10 } }),
-		).toEqual(["pr", "list", "state=open", "limit=10"]);
+		).toEqual(["pr", "list", "--state", "open", "--limit", "10"]);
 	});
 
-	test("3. boolean true becomes a bare flag", () => {
+	test("3. boolean true becomes a bare --flag", () => {
 		const argv = buildArgv({ subcommand: "repo view", args: { web: true } });
-		expect(argv).toContain("web");
+		expect(argv).toContain("--web");
+		expect(argv).not.toContain("--web=true");
 		expect(argv).not.toContain("web=true");
 	});
 
 	test("4. boolean false is omitted", () => {
 		const argv = buildArgv({ subcommand: "repo view", args: { web: false } });
+		expect(argv).not.toContain("--web");
 		expect(argv).not.toContain("web");
 		expect(argv).not.toContain("web=false");
 	});
 
-	test("5. array values become repeated tokens", () => {
+	test("5. array values become repeated --flag value pairs", () => {
 		expect(
 			buildArgv({ subcommand: "pr list", args: { label: ["bug", "urgent"] } }),
-		).toEqual(["pr", "list", "label=bug", "label=urgent"]);
+		).toEqual(["pr", "list", "--label", "bug", "--label", "urgent"]);
 	});
 
 	test("6. jsonFields produce --json with comma-joined fields", () => {
@@ -63,7 +65,7 @@ describe("buildArgv", () => {
 				subcommand: "search",
 				args: { query: "x", state: undefined, limit: null },
 			}),
-		).toEqual(["search", "query=x"]);
+		).toEqual(["search", "--query", "x"]);
 	});
 
 	test("11. repo appears after subcommand and args", () => {
@@ -178,7 +180,7 @@ describe("runGh", () => {
 		const exec = makeFakeExec({ stdout: "ok", code: 0 });
 		await runGh({ subcommand: "pr list", args: { state: "open" } }, exec);
 		expect(exec.calls[0][0]).toBe("gh");
-		expect(exec.calls[0][1]).toEqual(["pr", "list", "state=open"]);
+		expect(exec.calls[0][1]).toEqual(["pr", "list", "--state", "open"]);
 	});
 
 	test("2. success echoes command, exit code, and output", async () => {

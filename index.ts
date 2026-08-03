@@ -30,8 +30,9 @@ export type GhParams = {
  * Serialize params into the gh CLI's argv format.
  *
  * The subcommand is split on whitespace (e.g. "repo list" → ["repo", "list"]).
- * Args are serialized as `key=value` tokens; booleans become bare flags;
- * arrays become repeated tokens; false/null/undefined are skipped.
+ * Args are serialized as `--flag value` token pairs; booleans become bare
+ * `--flag` tokens; arrays become repeated `--flag value` pairs;
+ * false/null/undefined are skipped. Keys without a `--` prefix are prefixed.
  * Global flags (--repo, --json, --jq, --limit) are appended after subcommand
  * and args, in that order (--json before --jq).
  */
@@ -45,14 +46,15 @@ export function buildArgv(params: GhParams): string[] {
 	const args = params.args ?? {};
 	for (const [key, value] of Object.entries(args)) {
 		if (value === false || value === null || value === undefined) continue;
+		const flag = key.startsWith("--") ? key : `--${key}`;
 		if (value === true) {
-			argv.push(key);
+			argv.push(flag);
 		} else if (Array.isArray(value)) {
 			for (const v of value) {
-				argv.push(`${key}=${String(v)}`);
+				argv.push(flag, String(v));
 			}
 		} else {
-			argv.push(`${key}=${String(value)}`);
+			argv.push(flag, String(value));
 		}
 	}
 

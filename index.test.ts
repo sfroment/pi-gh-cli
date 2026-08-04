@@ -158,6 +158,24 @@ describe("assertSafeCommand", () => {
 			assertSafeCommand({ subcommand: "repo view owner/repo" }),
 		).not.toThrow();
 	});
+
+	test("12. codespace delete is refused", () => {
+		expect(() =>
+			assertSafeCommand({ subcommand: "codespace delete" }),
+		).toThrow(/codespace delete/);
+	});
+
+	test("13. run delete is allowed (re-runnable, not irreversible)", () => {
+		expect(() =>
+			assertSafeCommand({ subcommand: "run delete" }),
+		).not.toThrow();
+	});
+
+	test("14. secret delete is allowed (recreatable, not irreversible)", () => {
+		expect(() =>
+			assertSafeCommand({ subcommand: "secret delete" }),
+		).not.toThrow();
+	});
 });
 
 describe("formatOutput", () => {

@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 import { Type } from "typebox";
 
 /** Commands that are destructive/unrecoverable — refused unless forceDangerous is set. */
-const DANGEROUS_COMMANDS = ["repo delete", "release delete"];
+const DANGEROUS_COMMANDS = ["repo delete", "release delete", "codespace delete"];
 
 /** Regex matching gh's not-authenticated error messages. */
 const NOT_AUTHED = /not logged in|authentication required|auth.*fail/i;

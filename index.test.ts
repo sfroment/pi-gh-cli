@@ -1,4 +1,4 @@
-import { assertSafeCommand, buildArgv, formatOutput, runGh, type ExecResult, type GhExec, type GhParams } from "./index.ts";
+import { assertSafeCommand, buildArgv, formatOutput, runGh, GH_GUIDANCE, type ExecResult, type GhExec, type GhParams } from "./index.ts";
 import { describe, expect, mock, test } from "bun:test";
 
 describe("buildArgv", () => {
@@ -196,8 +196,13 @@ describe("formatOutput", () => {
 	});
 });
 
+describe("GH_GUIDANCE", () => {
+	test("1. does not contain stale key=value format", () => {
+		expect(GH_GUIDANCE).not.toContain("key=value");
+	});
+});
+
 /**
- * Fake exec: returns a canned ExecResult, recording the call so tests can
  * assert on the argv that was built. This is the only system boundary mocked
  * (per the TDD mocking skill — mock at boundaries, never internal collaborators).
  */

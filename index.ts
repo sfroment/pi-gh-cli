@@ -199,9 +199,9 @@ const RELEVANT_PROMPT = /\b(github|gh cli|pr |pull request|issue|repo|release|wo
  * Guidance injected into the system prompt when the user's message looks
  * GitHub-related. Kept short — the full reference lives in the SKILL.md.
  */
-const GH_GUIDANCE = `## GitHub CLI (gh) guidance
+export const GH_GUIDANCE = `## GitHub CLI (gh) guidance
 
-The \`gh\` tool wraps the GitHub CLI (\`gh\`) as a single typed tool. Pass the gh subcommand as \`subcommand\` and its flags as \`args\` (key=value). Booleans become bare flags (e.g. \`{ web: true }\` → \`--web\`). Arrays become repeated flags (e.g. \`{ label: ["bug", "urgent"] }\` → \`--label bug --label urgent\`).
+The \`gh\` tool wraps the GitHub CLI (\`gh\`) as a single typed tool. Pass the gh subcommand as \`subcommand\` and its flags as \`args\`. Booleans become bare flags (e.g. \`{ web: true }\` → \`--web\`). Strings/numbers become \`--flag value\` pairs. Arrays become repeated \`--flag value\` pairs (e.g. \`{ label: ["bug", "urgent"] }\` → \`--label bug --label urgent\`).
 
 Key patterns:
 - List PRs: \`subcommand: "pr list"\`, \`args: { state: "open", limit: 10 }\`.
@@ -230,14 +230,14 @@ export default function ghExtension(pi: ExtensionAPI) {
 		label: "GitHub CLI",
 		description:
 			"Call the GitHub CLI (gh) to interact with repositories, pull requests, issues, releases, workflows, gists, and more. " +
-			"Pass the gh subcommand as `subcommand` (e.g. 'pr list', 'repo view', 'issue list') and its flags as `args` (key=value). " +
+			"Pass the gh subcommand as `subcommand` (e.g. 'pr list', 'repo view', 'issue list') and its flags as `args`. " +
 			"Use `jsonFields` + `jq` for structured output, `repo` to target a specific repository, and `limit` to cap results. " +
 			"Destructive operations (repo delete, release delete) require `forceDangerous: true`.",
 		promptSnippet:
 			"Interact with GitHub (repos, PRs, issues, releases, workflows, gists) via the gh CLI.",
 		promptGuidelines: [
 			"Use the `gh` tool when the user asks about GitHub — repos, PRs, issues, releases, workflows, or gists. It calls the gh CLI directly.",
-			"Pass the gh subcommand as `subcommand` (e.g. 'pr list') and its flags as `args` (key=value). Booleans become bare flags, arrays become repeated flags.",
+			"Pass the gh subcommand as `subcommand` (e.g. 'pr list') and its flags as `args`. Booleans become bare flags, arrays become repeated flags.",
 			"Use `jsonFields` + `jq` for structured output when you need to parse results programmatically.",
 			"Destructive operations (`repo delete`, `release delete`) require `forceDangerous: true`. Always confirm with the user before using it.",
 			"If the tool reports you are not authenticated, tell the user to run `gh auth login`.",
@@ -253,7 +253,7 @@ export default function ghExtension(pi: ExtensionAPI) {
 					Type.Union([Type.String(), Type.Number(), Type.Boolean(), Type.Array(Type.String())]),
 					{
 						description:
-							"Command flags as a key/value map. Booleans become bare flags (e.g. {web: true} → web). Strings/numbers become key=value tokens. Arrays become repeated tokens.",
+							"Command flags as a key/value map. Booleans become bare flags (e.g. {web: true} → --web). Strings/numbers become --flag value pairs. Arrays become repeated --flag value pairs.",
 					},
 				),
 			),

@@ -20,7 +20,7 @@ The `gh` tool takes:
 - `jq` (optional string) — jq expression to filter/project JSON output (translates to `--jq expr`). Requires `jsonFields` to produce JSON output; `--json` always precedes `--jq`.
 - `limit` (optional integer) — maximum number of results (translates to `--limit N`).
 - `timeoutSeconds` (optional, default 30, max 120) — command timeout.
-- `forceDangerous` (optional boolean) — opt-in for destructive commands (`repo delete`, `release delete`). Requires explicit user confirmation.
+- `forceDangerous` (optional boolean) — opt-in for destructive commands (`repo delete`, `release delete`, `codespace delete`). Requires explicit user confirmation.
 
 ### Structured output
 
@@ -98,7 +98,7 @@ This produces `gh pr list --repo owner/repo --json number,title,state,author --j
 
 ## Pitfalls
 
-- **`repo delete` and `release delete` are refused** by the tool unless `forceDangerous: true` is set. Always confirm with the user before using it — these operations are unrecoverable.
+- **`repo delete`, `release delete`, and `codespace delete` are refused** by the tool unless `forceDangerous: true` is set. Always confirm with the user before using it — these operations are unrecoverable.
 - **Auth failures** — if the tool returns "not authenticated", tell the user to run `gh auth login` via bash. Do NOT retry the tool in a loop.
 - **gh not installed** — if the tool reports `gh` is not on PATH, tell the user to install it from https://cli.github.com/ or via `brew install gh`.
 - **`--json` must precede `--jq`** — the tool handles this automatically (jsonFields → `--json`, then jq → `--jq`), but if you pass raw args via the `args` map, ensure you don't inject `--jq` before `--json`.

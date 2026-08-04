@@ -207,7 +207,7 @@ Key patterns:
 - List PRs: \`subcommand: "pr list"\`, \`args: { state: "open", limit: 10 }\`.
 - Structured output: \`jsonFields: ["number", "title", "state"]\` → \`--json number,title,state\`. Use \`jq\` to filter/project.
 - Target a repo: \`repo: "owner/repo"\` → \`--repo owner/repo\`.
-- Destructive ops (\`repo delete\`, \`release delete\`) require \`forceDangerous: true\` and explicit user confirmation.
+- Destructive ops (\`repo delete\`, \`release delete\`, \`codespace delete\`) require \`forceDangerous: true\` and explicit user confirmation.
 
 If the tool reports you are not authenticated, run \`gh auth login\` via bash.`;
 
@@ -232,14 +232,14 @@ export default function ghExtension(pi: ExtensionAPI) {
 			"Call the GitHub CLI (gh) to interact with repositories, pull requests, issues, releases, workflows, gists, and more. " +
 			"Pass the gh subcommand as `subcommand` (e.g. 'pr list', 'repo view', 'issue list') and its flags as `args`. " +
 			"Use `jsonFields` + `jq` for structured output, `repo` to target a specific repository, and `limit` to cap results. " +
-			"Destructive operations (repo delete, release delete) require `forceDangerous: true`.",
+			"Destructive operations (repo delete, release delete, codespace delete) require `forceDangerous: true`.",
 		promptSnippet:
 			"Interact with GitHub (repos, PRs, issues, releases, workflows, gists) via the gh CLI.",
 		promptGuidelines: [
 			"Use the `gh` tool when the user asks about GitHub — repos, PRs, issues, releases, workflows, or gists. It calls the gh CLI directly.",
 			"Pass the gh subcommand as `subcommand` (e.g. 'pr list') and its flags as `args`. Booleans become bare flags, arrays become repeated flags.",
 			"Use `jsonFields` + `jq` for structured output when you need to parse results programmatically.",
-			"Destructive operations (`repo delete`, `release delete`) require `forceDangerous: true`. Always confirm with the user before using it.",
+			"Destructive operations (`repo delete`, `release delete`, `codespace delete`) require `forceDangerous: true`. Always confirm with the user before using it.",
 			"If the tool reports you are not authenticated, tell the user to run `gh auth login`.",
 		],
 		parameters: Type.Object({
@@ -284,7 +284,7 @@ export default function ghExtension(pi: ExtensionAPI) {
 			),
 			forceDangerous: Type.Optional(
 				Type.Boolean({
-					description: "Opt-in flag to allow destructive commands (repo delete, release delete). Requires explicit user confirmation.",
+					description: "Opt-in flag to allow destructive commands (repo delete, release delete, codespace delete). Requires explicit user confirmation.",
 				}),
 			),
 		}),

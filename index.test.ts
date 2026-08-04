@@ -203,6 +203,7 @@ describe("GH_GUIDANCE", () => {
 });
 
 /**
+ * Fake exec: returns a canned ExecResult, recording the call so tests can
  * assert on the argv that was built. This is the only system boundary mocked
  * (per the TDD mocking skill — mock at boundaries, never internal collaborators).
  */

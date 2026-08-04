@@ -8,7 +8,7 @@ A [pi coding agent](https://github.com/earendil-works/pi-mono) extension that wr
 - a bundled `SKILL.md` documenting the tool and common `gh` commands
 - per-turn prompt guidance when a prompt mentions GitHub, PRs, issues, repos, releases, workflows, or gists
 - graceful detection of the "not authenticated" failure with actionable guidance
-- a safety guard that refuses `repo delete` and `release delete` (unrecoverable) unless `forceDangerous: true` is set
+- a safety guard that refuses `repo delete`, `release delete`, and `codespace delete` (unrecoverable) unless `forceDangerous: true` is set
 
 ## Why not MCP?
 
@@ -44,7 +44,7 @@ pi install git:github.com/sfroment/pi-gh-cli
 | `jq` | `string` | jq expression to filter JSON output (→ `--jq expr`). |
 | `limit` | `integer` | Maximum results (→ `--limit N`). |
 | `timeoutSeconds` | `integer` | Command timeout (default 30, max 120). |
-| `forceDangerous` | `boolean` | Opt-in for destructive commands (`repo delete`, `release delete`). |
+| `forceDangerous` | `boolean` | Opt-in for destructive commands (`repo delete`, `release delete`, `codespace delete`). |
 
 ## Examples
 

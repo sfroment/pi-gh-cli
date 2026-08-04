@@ -319,3 +319,42 @@ describe("runGh", () => {
 		expect(exec.calls[0][1]).toContain(".[].title");
 	});
 });
+
+// --- Integration tests (opt-in) ---
+// Gated by TEST_INTEGRATION=1. Skipped by default so CI runs don't need gh.
+// When enabled + gh authed, these validate the full buildArgv→exec→formatOutput
+// pipeline against the real gh binary's cobra flag parser.
+
+const realExec: GhExec = async (cmd, args, opts) => {
+	const proc = Bun.spawn([cmd, ...args], {
+		stdout: "pipe",
+		stderr: "pipe",
+		signal: opts.signal,
+	});
+	const stdout = await new Response(proc.stdout).text();
+	const stderr = await new Response(proc.stderr).text();
+	const code = await proc.exited;
+	return { stdout, stderr, code };
+};
+
+describe("integration (real gh)", () => {
+	test.skipIf(!process.env.TEST_INTEGRATION)("1. gh auth status succeeds", async () => {
+		const res = await runGh({ subcommand: "auth status" }, realExec);
+		expect(res.isError).toBe(false);
+	});
+
+	test.skipIf(!process.env.TEST_INTEGRATION)("2. gh repo list --limit serialization", async () => {
+		const res = await runGh({ subcommand: "repo list", args: { limit: 3 } }, realExec);
+		expect(res.isError).toBe(false);
+	});
+
+	test.skipIf(!process.env.TEST_INTEGRATION)("3. gh pr list --state --limit --json serialization", async () => {
+		const res = await runGh({
+			subcommand: "pr list",
+			args: { state: "open", limit: 1 },
+			jsonFields: ["number"],
+			repo: "Koyeb/api.koyeb.com",
+		}, realExec);
+		expect(res.isError).toBe(false);
+	});
+});

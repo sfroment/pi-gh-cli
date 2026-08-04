@@ -140,6 +140,24 @@ describe("assertSafeCommand", () => {
 		expect(() => assertSafeCommand({ subcommand: "repo list" })).not.toThrow();
 		expect(() => assertSafeCommand({ subcommand: "pr list" })).not.toThrow();
 	});
+
+	test("9. dangerous command embedded in longer subcommand is caught (bypass fix)", () => {
+		expect(() =>
+			assertSafeCommand({ subcommand: "run repo delete" }),
+		).toThrow(/repo delete/);
+	});
+
+	test("10. whitespace-padded dangerous command is caught", () => {
+		expect(() =>
+			assertSafeCommand({ subcommand: "  repo delete  " }),
+		).toThrow(/repo delete/);
+	});
+
+	test("11. safe command with extra words is allowed", () => {
+		expect(() =>
+			assertSafeCommand({ subcommand: "repo view owner/repo" }),
+		).not.toThrow();
+	});
 });
 
 describe("formatOutput", () => {

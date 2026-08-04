@@ -81,13 +81,16 @@ export function buildArgv(params: GhParams): string[] {
  * by accident.
  */
 export function assertSafeCommand(params: GhParams): void {
-	const normalized = params.subcommand.trim().toLowerCase().split(/\s+/).slice(0, 2).join(" ");
-	if (DANGEROUS_COMMANDS.some((cmd) => normalized.startsWith(cmd))) {
-		if (params.forceDangerous === true) return;
-		throw new Error(
-			`Refusing \`${normalized}\` from the gh tool — this operation is unrecoverable. ` +
-				"To override, set `forceDangerous: true` and confirm with the user first.",
-		);
+	const words = params.subcommand.trim().toLowerCase().split(/\s+/);
+	for (let i = 0; i < words.length - 1; i++) {
+		const pair = `${words[i]} ${words[i + 1]}`;
+		if (DANGEROUS_COMMANDS.includes(pair)) {
+			if (params.forceDangerous === true) return;
+			throw new Error(
+				`Refusing \`${pair}\` from the gh tool — this operation is unrecoverable. ` +
+					"To override, set `forceDangerous: true` and confirm with the user first.",
+			);
+		}
 	}
 }
 

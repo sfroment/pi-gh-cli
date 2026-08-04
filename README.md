@@ -38,7 +38,7 @@ pi install git:github.com/sfroment/pi-gh-cli
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `subcommand` | `string` | The gh subcommand (e.g. `"pr list"`, `"repo view"`, `"issue view 42"`). |
-| `args` | `object` | Command flags as a key/value map. Booleans → bare flags (`{web: true}` → `--web`). Strings/numbers → `key=value`. Arrays → repeated tokens (`{label: ["bug","urgent"]}` → `--label bug --label urgent`). |
+| `args` | `object` | Command flags as a key/value map. Booleans → bare `--flag` (`{web: true}` → `--web`). Strings/numbers → `--flag value` (`{state: "open"}` → `--state open`). Arrays → repeated `--flag value` pairs (`{label: ["bug","urgent"]}` → `--label bug --label urgent`). |
 | `repo` | `string` | Target repository as `owner/repo` (→ `--repo owner/repo`). |
 | `jsonFields` | `string[]` | Fields to return as JSON (→ `--json field1,field2`). |
 | `jq` | `string` | jq expression to filter JSON output (→ `--jq expr`). |

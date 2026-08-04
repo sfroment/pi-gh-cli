@@ -14,7 +14,7 @@ Use whenever the user asks about anything on GitHub — listing repos, viewing o
 The `gh` tool takes:
 
 - `subcommand` (required, string) — the gh CLI subcommand (e.g. `"repo list"`, `"pr list"`, `"issue view 42"`). Split on spaces into the command path.
-- `args` (optional object) — key/value flags. Booleans become bare flags (`{web: true}` → `web`). Strings/numbers become `key=value` tokens. Arrays become repeated tokens (`{label: ["bug", "urgent"]}` → `label=bug label=urgent`). `false`/`null`/`undefined` are skipped.
+- `args` (optional object) — key/value flags. Booleans become bare `--flag` (`{web: true}` → `--web`). Strings/numbers become `--flag value` tokens (`{state: "open"}` → `--state open`). Arrays become repeated `--flag value` pairs (`{label: ["bug", "urgent"]}` → `--label bug --label urgent`). `false`/`null`/`undefined` are skipped.
 - `repo` (optional string) — target repository as `owner/repo` (translates to `--repo owner/repo`).
 - `jsonFields` (optional string[]) — GitHub fields to return as JSON (translates to `--json field1,field2,...`). Must be set before `jq`.
 - `jq` (optional string) — jq expression to filter/project JSON output (translates to `--jq expr`). Requires `jsonFields` to produce JSON output; `--json` always precedes `--jq`.

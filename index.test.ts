@@ -1,4 +1,4 @@
-import { assertSafeCommand, buildArgv, formatOutput, runGh, GH_GUIDANCE, type ExecResult, type GhExec, type GhParams } from "./index.ts";
+import { assertSafeCommand, buildArgv, formatOutput, runGh, GH_GUIDANCE, GH_CALL_EXAMPLE, GH_ARGS_DESCRIPTION, GH_SUBCOMMAND_DESCRIPTION, type ExecResult, type GhExec, type GhParams } from "./index.ts";
 import { describe, expect, mock, test } from "bun:test";
 
 describe("buildArgv", () => {
@@ -92,6 +92,69 @@ describe("buildArgv", () => {
 
 	test("13b. whitespace-only subcommand throws", () => {
 		expect(() => buildArgv({ subcommand: "   " })).toThrow(/subcommand/i);
+	});
+});
+
+describe("buildArgv mode#1 (array args)", () => {
+	test("A1.1 real payload: subcommand + array args with --json, top-level jsonFields wins", () => {
+		expect(
+			buildArgv({
+				subcommand: "repo",
+				args: ["view", "sfroment/herdr-git-detail", "--json", "description,repositoryTopics,url,visibility"],
+				jsonFields: ["description", "repositoryTopics", "url", "visibility"],
+			}),
+		).toEqual(["repo", "view", "sfroment/herdr-git-detail", "--json", "description,repositoryTopics,url,visibility"]);
+	});
+
+	test("A1.2 array args alone with --json (no top-level jsonFields) — promoted from array", () => {
+		expect(
+			buildArgv({ subcommand: "pr", args: ["list", "--json", "number,title"] }),
+		).toEqual(["pr", "list", "--json", "number,title"]);
+	});
+
+	test("A1.3 array args with boolean flag", () => {
+		expect(
+			buildArgv({ subcommand: "repo", args: ["view", "--web"] }),
+		).toEqual(["repo", "view", "--web"]);
+	});
+});
+
+describe("buildArgv mode#2 (nested args)", () => {
+	test("A2.1 real payload: subcommand+jsonFields nested inside args", () => {
+		expect(
+			buildArgv({
+				args: {
+					subcommand: "repo view sfroment/herdr-git-detail",
+					jsonFields: ["description", "repositoryTopics", "url", "visibility"],
+				},
+			}),
+		).toEqual(["repo", "view", "sfroment/herdr-git-detail", "--json", "description,repositoryTopics,url,visibility"]);
+	});
+
+	test("A2.2 nested repo+limit in args are harvested to top-level", () => {
+		expect(
+			buildArgv({
+				args: { subcommand: "pr list", repo: "owner/repo", limit: 5, state: "open" },
+			}),
+		).toEqual(["pr", "list", "--state", "open", "--repo", "owner/repo", "--limit", "5"]);
+	});
+
+	test("A2.3 top-level value wins over nested duplicate", () => {
+		expect(
+			buildArgv({
+				subcommand: "pr list",
+				jsonFields: ["a"],
+				args: { jsonFields: ["b"], state: "open" },
+			}),
+		).toEqual(["pr", "list", "--state", "open", "--json", "a"]);
+	});
+
+	test("A2.4 mis-typed known key nested in args becomes a flag, not dropped", () => {
+		// limit as a string (type mismatch) should fall through to a --limit flag
+		// rather than being silently dropped by the harvest branch.
+		expect(
+			buildArgv({ args: { subcommand: "pr list", limit: "5", state: "open" } }),
+		).toEqual(["pr", "list", "--limit", "5", "--state", "open"]);
 	});
 });
 
@@ -199,6 +262,44 @@ describe("formatOutput", () => {
 describe("GH_GUIDANCE", () => {
 	test("1. does not contain stale key=value format", () => {
 		expect(GH_GUIDANCE).not.toContain("key=value");
+	});
+});
+
+describe("GH_CALL_EXAMPLE", () => {
+	test("A4.1 structure: has subcommand, args, jsonFields; args is non-array object; jsonFields is array", () => {
+		const keys = Object.keys(GH_CALL_EXAMPLE);
+		expect(keys).toContain("subcommand");
+		expect(keys).toContain("args");
+		expect(keys).toContain("jsonFields");
+		expect(Array.isArray(GH_CALL_EXAMPLE.args)).toBe(false);
+		expect(typeof GH_CALL_EXAMPLE.args).toBe("object");
+		expect(Array.isArray(GH_CALL_EXAMPLE.jsonFields)).toBe(true);
+	});
+});
+
+describe("GH_ARGS_DESCRIPTION", () => {
+	test("A4.2 says object-not-array", () => {
+		expect(GH_ARGS_DESCRIPTION).toMatch(/not an array|never an array|must be an object/i);
+	});
+
+	test("A4.3 prohibits nesting with literal names", () => {
+		expect(GH_ARGS_DESCRIPTION).toMatch(/never[^.]*subcommand[^.]*jsonFields|top-level params, not nested/i);
+		expect(GH_ARGS_DESCRIPTION).toContain("subcommand");
+		expect(GH_ARGS_DESCRIPTION).toContain("jsonFields");
+	});
+});
+
+describe("GH_SUBCOMMAND_DESCRIPTION", () => {
+	test("A4.4 says top-level, never in args, has command path", () => {
+		expect(GH_SUBCOMMAND_DESCRIPTION).toMatch(/top-level/i);
+		expect(GH_SUBCOMMAND_DESCRIPTION).toMatch(/never[^.]*args/i);
+		expect(GH_SUBCOMMAND_DESCRIPTION).toContain("repo view");
+	});
+});
+
+describe("GH_GUIDANCE content", () => {
+	test("A4.5 embeds the flat example", () => {
+		expect(GH_GUIDANCE).toContain(JSON.stringify(GH_CALL_EXAMPLE, null, 2));
 	});
 });
 
@@ -318,6 +419,39 @@ describe("runGh", () => {
 		expect(exec.calls[0][1]).toContain("number,title");
 		expect(exec.calls[0][1]).toContain("--jq");
 		expect(exec.calls[0][1]).toContain(".[].title");
+	});
+});
+
+describe("runGh tolerance", () => {
+	test("A3.1 mode#1 array args → correct argv passed to exec, isError false", async () => {
+		const exec = makeFakeExec({ stdout: "ok", code: 0 });
+		const res = await runGh({
+			subcommand: "repo",
+			args: ["view", "sfroment/herdr-git-detail", "--json", "description,repositoryTopics,url,visibility"],
+			jsonFields: ["description", "repositoryTopics", "url", "visibility"],
+		}, exec);
+		expect(res.isError).toBe(false);
+		expect(exec.calls[0][1]).toEqual(["repo", "view", "sfroment/herdr-git-detail", "--json", "description,repositoryTopics,url,visibility"]);
+	});
+
+	test("A3.2 mode#2 nested args → correct argv passed to exec, isError false", async () => {
+		const exec = makeFakeExec({ stdout: "ok", code: 0 });
+		const res = await runGh({
+			args: {
+				subcommand: "repo view sfroment/herdr-git-detail",
+				jsonFields: ["description", "repositoryTopics", "url", "visibility"],
+			},
+		}, exec);
+		expect(res.isError).toBe(false);
+		expect(exec.calls[0][1]).toEqual(["repo", "view", "sfroment/herdr-git-detail", "--json", "description,repositoryTopics,url,visibility"]);
+	});
+
+	test("A3.3 dangerous command nested in args is still refused", async () => {
+		const exec = makeFakeExec({ stdout: "", code: 0 });
+		await expect(
+			runGh({ args: { subcommand: "repo delete" } }, exec),
+		).rejects.toThrow(/repo delete/);
+		expect(exec.calls).toHaveLength(0);
 	});
 });
 

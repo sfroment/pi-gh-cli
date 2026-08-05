@@ -13,14 +13,28 @@ Use whenever the user asks about anything on GitHub — listing repos, viewing o
 
 The `gh` tool takes:
 
-- `subcommand` (required, string) — the gh CLI subcommand (e.g. `"repo list"`, `"pr list"`, `"issue view 42"`). Split on spaces into the command path.
-- `args` (optional object) — key/value flags. Booleans become bare `--flag` (`{web: true}` → `--web`). Strings/numbers become `--flag value` tokens (`{state: "open"}` → `--state open`). Arrays become repeated `--flag value` pairs (`{label: ["bug", "urgent"]}` → `--label bug --label urgent`). `false`/`null`/`undefined` are skipped.
+- `subcommand` (required, string) — the full gh CLI subcommand path (e.g. `"repo list"`, `"pr list"`, `"issue view 42"`). Top-level parameter — never nest it inside `args`.
+- `args` (optional object) — a key/value object of flags ONLY (never an array; do not nest `subcommand`, `jsonFields`, `jq`, `repo`, or `limit` here). Booleans become bare `--flag` (`{web: true}` → `--web`). Strings/numbers become `--flag value` tokens (`{state: "open"}` → `--state open`). Arrays become repeated `--flag value` pairs (`{label: ["bug", "urgent"]}` → `--label bug --label urgent`). `false`/`null`/`undefined` are skipped.
 - `repo` (optional string) — target repository as `owner/repo` (translates to `--repo owner/repo`).
 - `jsonFields` (optional string[]) — GitHub fields to return as JSON (translates to `--json field1,field2,...`). Must be set before `jq`.
 - `jq` (optional string) — jq expression to filter/project JSON output (translates to `--jq expr`). Requires `jsonFields` to produce JSON output; `--json` always precedes `--jq`.
 - `limit` (optional integer) — maximum number of results (translates to `--limit N`).
 - `timeoutSeconds` (optional, default 30, max 120) — command timeout.
 - `forceDangerous` (optional boolean) — opt-in for destructive commands (`repo delete`, `release delete`, `codespace delete`). Requires explicit user confirmation.
+
+### Call shape
+
+All parameters are TOP-LEVEL siblings. `args` is a key/value object of flags ONLY — never an array, and never nest the other parameters inside it.
+
+```json
+{
+  "subcommand": "pr list",
+  "args": { "state": "open" },
+  "repo": "owner/repo",
+  "jsonFields": ["number", "title", "state"],
+  "limit": 10
+}
+```
 
 ### Structured output
 
@@ -98,6 +112,8 @@ This produces `gh pr list --repo owner/repo --json number,title,state,author --j
 
 ## Pitfalls
 
+- **`args` is an object, never an array** — pass `{ state: "open" }`, not `["--state","open"]`. The tool tolerates an array but it's not the correct shape.
+- **Never nest parameters inside `args`** — `subcommand`, `jsonFields`, `jq`, `repo`, `limit` are top-level siblings of `args`, not keys inside it.
 - **`repo delete`, `release delete`, and `codespace delete` are refused** by the tool unless `forceDangerous: true` is set. Always confirm with the user before using it — these operations are unrecoverable.
 - **Auth failures** — if the tool returns "not authenticated", tell the user to run `gh auth login` via bash. Do NOT retry the tool in a loop.
 - **gh not installed** — if the tool reports `gh` is not on PATH, tell the user to install it from https://cli.github.com/ or via `brew install gh`.

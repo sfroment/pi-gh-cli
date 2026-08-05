@@ -1,8 +1,11 @@
 {
-  "name": "pi-gh-cli-extension",
+  "name": "@sfroment/pi-gh-cli",
   "version": "1.0.0",
   "description": "Pi extension wrapping the GitHub gh CLI as a single typed tool.",
-  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sfroment/pi-gh-cli.git"
+  },
   "pi": {
     "extensions": ["./index.ts"]
   },

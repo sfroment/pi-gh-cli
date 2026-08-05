@@ -37,8 +37,8 @@ pi install git:github.com/sfroment/pi-gh-cli
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `subcommand` | `string` | The gh subcommand (e.g. `"pr list"`, `"repo view"`, `"issue view 42"`). |
-| `args` | `object` | Command flags as a key/value map. Booleans → bare `--flag` (`{web: true}` → `--web`). Strings/numbers → `--flag value` (`{state: "open"}` → `--state open`). Arrays → repeated `--flag value` pairs (`{label: ["bug","urgent"]}` → `--label bug --label urgent`). |
+| `subcommand` | `string` | The full gh subcommand path (e.g. `"pr list"`, `"repo view"`, `"issue view 42"`). Top-level — never nest inside `args`. |
+| `args` | `object` | A key/value object of flags ONLY — **never an array**, and do not nest `subcommand`/`jsonFields`/`jq`/`repo`/`limit` here. Booleans → bare `--flag` (`{web: true}` → `--web`). Strings/numbers → `--flag value` (`{state: "open"}` → `--state open`). Arrays → repeated `--flag value` pairs (`{label: ["bug","urgent"]}` → `--label bug --label urgent`). |
 | `repo` | `string` | Target repository as `owner/repo` (→ `--repo owner/repo`). |
 | `jsonFields` | `string[]` | Fields to return as JSON (→ `--json field1,field2`). |
 | `jq` | `string` | jq expression to filter JSON output (→ `--jq expr`). |
@@ -53,8 +53,8 @@ List open PRs in a repo:
 ```json
 {
   "subcommand": "pr list",
-  "repo": "owner/repo",
   "args": { "state": "open" },
+  "repo": "owner/repo",
   "jsonFields": ["number", "title", "state"],
   "limit": 10
 }

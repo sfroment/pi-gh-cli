@@ -26,6 +26,149 @@ export type GhParams = {
 	forceDangerous?: boolean;
 };
 
+export type RawGhParams = Omit<GhParams, "subcommand" | "args"> & {
+	subcommand?: string;
+	args?: GhParams["args"] | string[];
+};
+
+/** Flags in array-args that promote to typed top-level fields when unset. */
+const PROMOTABLE_FLAGS = new Set(["json", "jq", "repo", "limit"]);
+
+/**
+ * Normalize raw tool params into canonical GhParams. Tolerates two mis-shaped
+ * calls the model produces: args as a JSON array (mode #1) and known top-level
+ * keys nested inside an object args (mode #2). Top-level fields always win.
+ */
+function normalizeParams(raw: RawGhParams): GhParams {
+	const { args: rawArgs, ...rest } = raw;
+	const subcommand = rest.subcommand ?? "";
+
+	// Mode #1: args is an array of positional/flag tokens.
+	if (Array.isArray(rawArgs)) {
+		const parts: string[] = subcommand.trim().split(/\s+/).filter(Boolean);
+		const flags: NonNullable<GhParams["args"]> = {};
+		let jsonFields = rest.jsonFields;
+		let jq = rest.jq;
+		let repo = rest.repo;
+		let limit = rest.limit;
+
+		for (let i = 0; i < rawArgs.length; i++) {
+			const token = rawArgs[i];
+			if (token.startsWith("--")) {
+				let name: string;
+				let value: string | undefined;
+
+				const eq = token.indexOf("=");
+				if (eq >= 0) {
+					name = token.slice(2, eq);
+					value = token.slice(eq + 1);
+				} else {
+					name = token.slice(2);
+					if (i + 1 < rawArgs.length && !rawArgs[i + 1].startsWith("--")) {
+						value = rawArgs[++i];
+					}
+				}
+
+				if (PROMOTABLE_FLAGS.has(name)) {
+					if (name === "json" && jsonFields === undefined && value !== undefined) {
+						jsonFields = value.split(",");
+					} else if (name === "jq" && jq === undefined && value !== undefined) {
+						jq = value;
+					} else if (name === "repo" && repo === undefined && value !== undefined) {
+						repo = value;
+					} else if (name === "limit" && limit === undefined && value !== undefined) {
+						limit = parseInt(value, 10);
+					}
+					// If top-level is already set, the parsed duplicate is dropped.
+				} else {
+					flags[name] = value === undefined ? true : value;
+				}
+			} else {
+				parts.push(token);
+			}
+		}
+
+		return {
+			...rest,
+			subcommand: parts.join(" "),
+			args: Object.keys(flags).length > 0 ? flags : undefined,
+			jsonFields,
+			jq,
+			repo,
+			limit,
+		};
+	}
+
+	// Object args or no args — harvest known top-level keys from nested args (mode #2).
+	if (rawArgs && typeof rawArgs === "object" && !Array.isArray(rawArgs)) {
+		const knownKeys: (keyof RawGhParams)[] = [
+			"subcommand", "jsonFields", "jq", "repo", "limit", "timeoutSeconds", "forceDangerous",
+		];
+		const harvested: Partial<GhParams> = {};
+		const remaining: NonNullable<GhParams["args"]> = {};
+
+		for (const [key, value] of Object.entries(rawArgs)) {
+			if (knownKeys.includes(key as keyof RawGhParams)) {
+				// Top-level wins — only harvest when unset AND the type matches.
+				// When top-level is already set, the nested duplicate is dropped entirely.
+				// When top-level is unset but the type mismatches, fall through to a flag
+				// so a mis-typed knownKey (e.g. {args:{limit:"5"}}) becomes --limit 5
+				// instead of being silently dropped.
+				if (key === "subcommand") {
+					if (!subcommand && typeof value === "string") harvested.subcommand = value;
+					else if (!subcommand) remaining[key] = value as string | number | boolean | string[];
+				} else if (key === "jsonFields") {
+					if (rest.jsonFields === undefined && Array.isArray(value)) harvested.jsonFields = value as string[];
+					else if (rest.jsonFields === undefined) remaining[key] = value as string | number | boolean | string[];
+				} else if (key === "jq") {
+					if (rest.jq === undefined && typeof value === "string") harvested.jq = value;
+					else if (rest.jq === undefined) remaining[key] = value as string | number | boolean | string[];
+				} else if (key === "repo") {
+					if (rest.repo === undefined && typeof value === "string") harvested.repo = value;
+					else if (rest.repo === undefined) remaining[key] = value as string | number | boolean | string[];
+				} else if (key === "limit") {
+					if (rest.limit === undefined && typeof value === "number") harvested.limit = value;
+					else if (rest.limit === undefined) remaining[key] = value as string | number | boolean | string[];
+				} else if (key === "timeoutSeconds") {
+					if (rest.timeoutSeconds === undefined && typeof value === "number") harvested.timeoutSeconds = value;
+					else if (rest.timeoutSeconds === undefined) remaining[key] = value as string | number | boolean | string[];
+				} else if (key === "forceDangerous") {
+					if (rest.forceDangerous === undefined && typeof value === "boolean") harvested.forceDangerous = value;
+					else if (rest.forceDangerous === undefined) remaining[key] = value as string | number | boolean | string[];
+				}
+			} else if (key === "args" && Array.isArray(value)) {
+				// Nested args inside args (array form) — recurse via mode #1.
+				const inner = normalizeParams({ ...rest, subcommand, args: value });
+				if (inner.subcommand && !subcommand) harvested.subcommand = inner.subcommand;
+				if (inner.jsonFields !== undefined && rest.jsonFields === undefined) harvested.jsonFields = inner.jsonFields;
+				if (inner.jq !== undefined && rest.jq === undefined) harvested.jq = inner.jq;
+				if (inner.repo !== undefined && rest.repo === undefined) harvested.repo = inner.repo;
+				if (inner.limit !== undefined && rest.limit === undefined) harvested.limit = inner.limit;
+				if (inner.args) Object.assign(remaining, inner.args);
+			} else if (key === "args" && typeof value === "object" && value !== null && !Array.isArray(value)) {
+				// Nested args inside args (object form) — merge remaining flags.
+				Object.assign(remaining, value as Record<string, string | number | boolean | string[]>);
+			} else {
+				remaining[key] = value as string | number | boolean | string[];
+			}
+		}
+
+		return {
+			...rest,
+			subcommand: harvested.subcommand ?? subcommand,
+			args: Object.keys(remaining).length > 0 ? remaining : undefined,
+			jsonFields: harvested.jsonFields ?? rest.jsonFields,
+			jq: harvested.jq ?? rest.jq,
+			repo: harvested.repo ?? rest.repo,
+			limit: harvested.limit ?? rest.limit,
+			timeoutSeconds: harvested.timeoutSeconds ?? rest.timeoutSeconds,
+			forceDangerous: harvested.forceDangerous ?? rest.forceDangerous,
+		};
+	}
+
+	return { ...rest, subcommand, args: rawArgs };
+}
+
 /**
  * Serialize params into the gh CLI's argv format.
  *
@@ -36,14 +179,15 @@ export type GhParams = {
  * Global flags (--repo, --json, --jq, --limit) are appended after subcommand
  * and args, in that order (--json before --jq).
  */
-export function buildArgv(params: GhParams): string[] {
-	const trimmed = params.subcommand.trim();
+export function buildArgv(params: RawGhParams): string[] {
+	const normalized = normalizeParams(params);
+	const trimmed = normalized.subcommand.trim();
 	if (trimmed.length === 0) {
 		throw new Error("subcommand is required and must not be empty or whitespace");
 	}
 
 	const argv: string[] = trimmed.split(/\s+/);
-	const args = params.args ?? {};
+	const args = normalized.args ?? {};
 	for (const [key, value] of Object.entries(args)) {
 		if (value === false || value === null || value === undefined) continue;
 		const flag = key.startsWith("--") ? key : `--${key}`;
@@ -58,17 +202,17 @@ export function buildArgv(params: GhParams): string[] {
 		}
 	}
 
-	if (params.repo) {
-		argv.push("--repo", params.repo);
+	if (normalized.repo) {
+		argv.push("--repo", normalized.repo);
 	}
-	if (params.jsonFields && params.jsonFields.length > 0) {
-		argv.push("--json", params.jsonFields.join(","));
+	if (normalized.jsonFields && normalized.jsonFields.length > 0) {
+		argv.push("--json", normalized.jsonFields.join(","));
 	}
-	if (params.jq) {
-		argv.push("--jq", params.jq);
+	if (normalized.jq) {
+		argv.push("--jq", normalized.jq);
 	}
-	if (params.limit !== undefined && params.limit !== null) {
-		argv.push("--limit", String(params.limit));
+	if (normalized.limit !== undefined && normalized.limit !== null) {
+		argv.push("--limit", String(normalized.limit));
 	}
 
 	return argv;
@@ -121,7 +265,7 @@ export type GhExec = (
  * as a Pi tool result.
  */
 export async function runGh(
-	params: GhParams,
+	rawParams: RawGhParams,
 	exec: GhExec,
 	signal?: AbortSignal,
 ): Promise<{
@@ -129,6 +273,10 @@ export async function runGh(
 	details: Record<string, unknown>;
 	isError: boolean;
 }> {
+	// Normalize before guard: the model may nest subcommand inside args,
+	// so we must harvest it before assertSafeCommand can see it.
+	const params = normalizeParams(rawParams);
+
 	if (!params.subcommand || params.subcommand.trim().length === 0) {
 		throw new Error("Pass a gh subcommand, for example `subcommand: 'repo list'` or `subcommand: 'pr list'`.");
 	}
@@ -195,16 +343,50 @@ const skillPath = join(baseDir, "skill", "SKILL.md");
 
 const RELEVANT_PROMPT = /\b(github|gh cli|pr |pull request|issue|repo|release|workflow|gist)\b/i;
 
+/** Canonical flat call-shape example — single source of truth for all prompt surfaces. */
+export const GH_CALL_EXAMPLE = {
+	subcommand: "pr list",
+	args: { state: "open" },
+	repo: "owner/repo",
+	jsonFields: ["number", "title", "state"],
+	limit: 10,
+} as const;
+
+export const GH_ARGS_DESCRIPTION =
+	"Command flags as a key/value object map (e.g. {state: \"open\", web: true}). " +
+	"Must be an object, not an array. " +
+	"Never put subcommand, jsonFields, repo, jq, or limit inside args — " +
+	"those are top-level params, not nested inside args.";
+
+export const GH_SUBCOMMAND_DESCRIPTION =
+	"The gh CLI subcommand as a top-level param, e.g. 'repo view owner/repo' or 'pr list'. " +
+	"Split on spaces into the command path. " +
+	"This is a top-level param — never nest it inside args.";
+
+const GH_CALL_EXAMPLE_JSON = JSON.stringify(GH_CALL_EXAMPLE, null, 2);
+
 /**
  * Guidance injected into the system prompt when the user's message looks
  * GitHub-related. Kept short — the full reference lives in the SKILL.md.
  */
 export const GH_GUIDANCE = `## GitHub CLI (gh) guidance
 
-The \`gh\` tool wraps the GitHub CLI (\`gh\`) as a single typed tool. Pass the gh subcommand as \`subcommand\` and its flags as \`args\`. Booleans become bare flags (e.g. \`{ web: true }\` → \`--web\`). Strings/numbers become \`--flag value\` pairs. Arrays become repeated \`--flag value\` pairs (e.g. \`{ label: ["bug", "urgent"] }\` → \`--label bug --label urgent\`).
+The \`gh\` tool wraps the GitHub CLI (\`gh\`) as a single typed tool. All params are top-level siblings — never nest subcommand, jsonFields, repo, jq, or limit inside args.
+
+Call shape (all params flat at top level):
+\`\`\`json
+${GH_CALL_EXAMPLE_JSON}
+\`\`\`
+
+- \`subcommand\` (top-level): the gh command, e.g. "pr list" or "repo view owner/repo".
+- \`args\` (top-level): key/value object map of flags only, e.g. {state: "open", web: true}. Must be an object, not an array.
+- \`jsonFields\` (top-level): string array for --json output.
+- \`jq\` (top-level): jq filter expression.
+- \`repo\` (top-level): target repo as owner/repo.
+- \`limit\` (top-level): max results.
 
 Key patterns:
-- List PRs: \`subcommand: "pr list"\`, \`args: { state: "open", limit: 10 }\`.
+- List PRs: \`subcommand: "pr list"\`, \`args: { state: "open" }\`, \`limit: 10\`.
 - Structured output: \`jsonFields: ["number", "title", "state"]\` → \`--json number,title,state\`. Use \`jq\` to filter/project.
 - Target a repo: \`repo: "owner/repo"\` → \`--repo owner/repo\`.
 - Destructive ops (\`repo delete\`, \`release delete\`, \`codespace delete\`) require \`forceDangerous: true\` and explicit user confirmation.
@@ -230,32 +412,36 @@ export default function ghExtension(pi: ExtensionAPI) {
 		label: "GitHub CLI",
 		description:
 			"Call the GitHub CLI (gh) to interact with repositories, pull requests, issues, releases, workflows, gists, and more. " +
-			"Pass the gh subcommand as `subcommand` (e.g. 'pr list', 'repo view', 'issue list') and its flags as `args`. " +
-			"Use `jsonFields` + `jq` for structured output, `repo` to target a specific repository, and `limit` to cap results. " +
+			"All params are top-level siblings: subcommand (e.g. 'pr list'), args (object of flags), jsonFields, jq, repo, limit. " +
+			"Never nest subcommand/jsonFields/repo/jq/limit inside args — args is a flat key/value object of flags only.\n" +
+			"Example call shape:\n" + GH_CALL_EXAMPLE_JSON + "\n" +
 			"Destructive operations (repo delete, release delete, codespace delete) require `forceDangerous: true`.",
 		promptSnippet:
 			"Interact with GitHub (repos, PRs, issues, releases, workflows, gists) via the gh CLI.",
 		promptGuidelines: [
 			"Use the `gh` tool when the user asks about GitHub — repos, PRs, issues, releases, workflows, or gists. It calls the gh CLI directly.",
-			"Pass the gh subcommand as `subcommand` (e.g. 'pr list') and its flags as `args`. Booleans become bare flags, arrays become repeated flags.",
+			"All params are top-level siblings: subcommand, args, jsonFields, jq, repo, limit, forceDangerous. Never nest one inside another.",
+			"`args` is a key/value object of flags only (e.g. {state: \"open\", web: true}), never an array, and never contains subcommand/jsonFields/repo/jq/limit.",
 			"Use `jsonFields` + `jq` for structured output when you need to parse results programmatically.",
 			"Destructive operations (`repo delete`, `release delete`, `codespace delete`) require `forceDangerous: true`. Always confirm with the user before using it.",
 			"If the tool reports you are not authenticated, tell the user to run `gh auth login`.",
 		],
 		parameters: Type.Object({
-			subcommand: Type.String({
-				description:
-					"The gh CLI subcommand (e.g. 'repo list', 'pr list', 'issue view 42'). Split on spaces into the command path.",
-			}),
+			subcommand: Type.Optional(
+				Type.String({
+					description: GH_SUBCOMMAND_DESCRIPTION,
+				}),
+			),
 			args: Type.Optional(
-				Type.Record(
-					Type.String(),
-					Type.Union([Type.String(), Type.Number(), Type.Boolean(), Type.Array(Type.String())]),
-					{
-						description:
-							"Command flags as a key/value map. Booleans become bare flags (e.g. {web: true} → --web). Strings/numbers become --flag value pairs. Arrays become repeated --flag value pairs.",
-					},
-				),
+				Type.Union([
+					Type.Record(
+						Type.String(),
+						Type.Union([Type.String(), Type.Number(), Type.Boolean(), Type.Array(Type.String())]),
+					),
+					Type.Array(Type.String()),
+				], {
+					description: GH_ARGS_DESCRIPTION,
+				}),
 			),
 			repo: Type.Optional(
 				Type.String({
@@ -288,7 +474,7 @@ export default function ghExtension(pi: ExtensionAPI) {
 				}),
 			),
 		}),
-		async execute(_toolCallId, params: GhParams, signal) {
+		async execute(_toolCallId, params: RawGhParams, signal) {
 			return runGh(params, (cmd, args, opts) => pi.exec(cmd, args, opts), signal);
 		},
 	});

@@ -1,4 +1,17 @@
-# GitHub CLI (gh) Pi extension
+# pi-gh-cli
+
+[![CI](https://github.com/sfroment/pi-gh-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/sfroment/pi-gh-cli/actions/workflows/ci.yml)
+[![Release](https://github.com/sfroment/pi-gh-cli/actions/workflows/release.yml/badge.svg)](https://github.com/sfroment/pi-gh-cli/actions/workflows/release.yml)
+[![npm version](https://img.shields.io/npm/v/@sfroment/pi-gh-cli.svg?cacheSeconds=120)](https://www.npmjs.com/package/@sfroment/pi-gh-cli)
+[![npm downloads](https://img.shields.io/npm/dm/@sfroment/pi-gh-cli.svg?cacheSeconds=120)](https://www.npmjs.com/package/@sfroment/pi-gh-cli)
+[![npm bundle size](https://img.shields.io/bundlephobia/min/@sfroment/pi-gh-cli.svg?cacheSeconds=120)](https://bundlephobia.com/package/@sfroment/pi-gh-cli)
+[![GitHub Release](https://img.shields.io/github/v/release/sfroment/pi-gh-cli.svg?cacheSeconds=120)](https://github.com/sfroment/pi-gh-cli/releases)
+[![GitHub stars](https://img.shields.io/github/stars/sfroment/pi-gh-cli.svg?cacheSeconds=120)](https://github.com/sfroment/pi-gh-cli/stargazers)
+[![GitHub last commit](https://img.shields.io/github/last-commit/sfroment/pi-gh-cli.svg?cacheSeconds=120)](https://github.com/sfroment/pi-gh-cli/commits)
+[![GitHub commits since latest release](https://img.shields.io/github/commits-since/sfroment/pi-gh-cli/latest.svg?cacheSeconds=120)](https://github.com/sfroment/pi-gh-cli/releases)
+[![license](https://img.shields.io/npm/l/@sfroment/pi-gh-cli.svg?cacheSeconds=120)](https://github.com/sfroment/pi-gh-cli/blob/main/LICENSE)
+[![Bun](https://img.shields.io/badge/runtime-Bun-fd4b3a?logo=bun&logoColor=white)](https://bun.sh)
+[![TypeScript](https://img.shields.io/badge/lang-TypeScript-3178c6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 
 A [pi coding agent](https://github.com/earendil-works/pi-mono) extension that wraps the GitHub `gh` CLI as a single typed tool — **directly**, not via an MCP server.
 
@@ -79,4 +92,4 @@ bunx tsc --noEmit # type-check
 
 ## License
 
-MIT
+GPL-3.0

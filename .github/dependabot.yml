@@ -1,0 +1,22 @@
+version: 2
+updates:
+  - package-ecosystem: bun
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels: [dependencies]
+    groups:
+      pi-runtime:
+        patterns:
+          - "@earendil-works/*"
+      dev-deps:
+        patterns:
+          - "@types/*"
+          - "typebox"
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    labels: [dependencies, ci]

@@ -93,3 +93,7 @@ bunx tsc --noEmit # type-check
 ## License
 
 GPL-3.0
+
+## Stargazers
+
+[![Stargazers over time](https://starchart.cc/sfroment/pi-gh-cli.svg?variant=dark)](https://starchart.cc/sfroment/pi-gh-cli)

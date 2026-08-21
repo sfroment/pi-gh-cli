@@ -99,7 +99,3 @@ GPL-3.0
 - **Author:** [Sacha Froment](https://sacha42.com)
 - **Source:** <https://github.com/sfroment/pi-gh-cli>
 - **Issues:** <https://github.com/sfroment/pi-gh-cli/issues>
-
-## Stargazers
-
-[![Stargazers over time](https://starchart.cc/sfroment/pi-gh-cli.svg?variant=dark)](https://starchart.cc/sfroment/pi-gh-cli)

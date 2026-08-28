@@ -110,6 +110,29 @@ This produces `gh pr list --repo owner/repo --json number,title,state,author --j
 
 - `api ENDPOINT` — raw GitHub REST/GraphQL API call (`args: { method: "GET" }`; `subcommand: "api repos/owner/repo/issues"`).
 
+### Full subcommand surface
+
+The categories above cover the common cases. gh has many more top-level subcommands — the full list (run `gh --help` via bash for the authoritative version):
+
+- `gist` — manage gists (create, list, view, clone, edit, delete).
+- `codespace` — manage codespaces (create, list, ssh, cp, stop, delete).
+- `secret` / `variable` — manage repo/org Actions secrets and variables.
+- `org` — organization management (list, members, teams).
+- `label` — manage repo labels (list, create, edit, delete, clone).
+- `project` / `discussion` — GitHub Projects and Discussions (limited CLI support; prefer `api`).
+- `run` / `workflow` — Actions runs and workflows (covered under Actions / Workflows).
+- `release` — releases (covered under Releases).
+- `cache` — manage Actions cache.
+- `ruleset` / `rulesets` — repo/org rulesets.
+- `extension` — manage gh extensions (install, list, upgrade).
+- `alias` / `config` — CLI aliases and config (`gh config get editor`).
+- `auth` — authentication (`gh auth status`, `gh auth login`, `gh auth refresh`).
+- `gpg-key` / `ssh-key` — manage GPG and SSH keys.
+- `attestation` / `browse` / `status` / `completion` / `reference` — misc (browse opens the repo in a browser; `gh status` shows notifications).
+- `repo` / `issue` / `pr` — covered under Repos / Issues / Pull requests.
+
+For any subcommand not listed, run `gh <subcommand> --help` via bash to see its flags.
+
 ## Pitfalls
 
 - **`args` is an object, never an array** — pass `{ state: "open" }`, not `["--state","open"]`. The tool tolerates an array but it's not the correct shape.

@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- `limit` on `view` commands is now stripped from argv and executed (noted in the output, `limitStripped` detail) instead of failing the call — the model's intent (fetch the item) is unambiguous.
+- `timeoutSeconds` above 120 that is a multiple of 1000 is treated as milliseconds (models echo CLI-style `60000`); the schema `maximum` is gone, the runtime clamp stays.
+- The missing-`subcommand` error now states that `subcommand` is not remembered between calls.
+
 ### Added
 - `assertLimitUsage` guard: `limit` on `view` commands (`pr`, `issue`, `run`, `release`, `repo`, `gist`, `codespace`, `workflow`, `ruleset`, `project` view) is refused with a working-form error instead of the CLI's bare "unknown flag: --limit" (flag-shaped `args.limit` included; retry suggestion tailored per pair — jsonFields where the view supports `--json`, plain output otherwise).
 

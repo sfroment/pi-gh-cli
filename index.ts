@@ -20,7 +20,8 @@ const NOT_AUTHED = /not logged in|authentication required|auth.*fail/i;
  * (only the list/search forms do). Passing --limit there fails with
  * "unknown flag: --limit", which gives the model nothing to recover with.
  * `codespace view`, `ruleset view`, and `project view` verified against the
- * real gh CLI — they exist and take no --limit.
+ * real gh CLI — they exist and take no --limit. stripLimitForViewCommands
+ * removes the flag and runs instead of failing the call.
  */
 const NO_LIMIT_SUBCOMMANDS = new Set([
 	"pr view",
@@ -255,52 +256,39 @@ export function buildArgv(params: RawGhParams): string[] {
 }
 
 /**
- * Reject `limit` on gh commands that do not accept it. Only list-style
- * commands take `--limit`; the `view` forms reject it with
- * "unknown flag: --limit". Fail fast with the working form instead.
- *
- * Reads the typed `params.limit` plus a flag-shaped `args.limit` — including
- * `--`-prefixed object keys, which buildArgv passes through verbatim. The
- * normalizer deliberately converts a mis-typed nested `limit` into an args
- * flag, and models echo flag names from error text, so both shapes must be
- * guarded or the raw CLI error leaks through.
+ * `view`-style subcommands fetch a single item and reject `--limit` with
+ * "unknown flag: --limit". Instead of failing the call, strip the flag from
+ * argv and run — the model's intent (fetch the item) is unambiguous. Returns
+ * the scrubbed argv and whether anything was removed.
  */
-export function assertLimitUsage(params: GhParams): void {
-	const args = params.args ?? {};
-	// Nullish/false args.limit would mask a sibling "--limit" key that the
-	// serializer still emits — fall through to the dash-prefixed key.
-	const argsLimit =
-		args.limit === undefined || args.limit === null || args.limit === false
-			? args["--limit"]
-			: args.limit;
-	// `--limit` (or `--limit=N`) can also be embedded directly in the
-	// subcommand string, which the serializer splits verbatim into argv —
-	// and as an args-object key with the value inline (`{"--limit=3": true}`),
-	// which the serializer passes through verbatim. Scan both the same way.
-	const words = params.subcommand.trim().toLowerCase().split(/\s+/);
-	const flagLooksLikeLimit = (token: string) =>
-		token === "--limit" || token.startsWith("--limit=");
-	const subLimit = words.some(flagLooksLikeLimit);
-	const argsKeyLimit = Object.entries(args).some(([k, v]) => {
-		if (v === false || v === null || v === undefined) return false; // serializer drops these
-		return flagLooksLikeLimit(k.startsWith("--") ? k : `--${k}`);
-	});
-	const limit =
-		params.limit ?? (argsLimit as unknown) ?? (subLimit || argsKeyLimit ? "present" : undefined);
-	if (limit === undefined || limit === null || limit === false) return;
+export function stripLimitForViewCommands(
+	argv: readonly string[],
+	subcommand: string,
+): { argv: string[]; stripped: boolean } {
+	const words = subcommand.trim().toLowerCase().split(/\s+/);
+	let isView = false;
 	for (let i = 0; i < words.length - 1; i++) {
-		const pair = `${words[i]} ${words[i + 1]}`;
-		if (NO_LIMIT_SUBCOMMANDS.has(pair)) {
-			const retryForm = VIEW_PAIRS_WITH_JSON.has(pair)
-				? `subcommand: "${pair} <id>" with the fields in jsonFields`
-				: `subcommand: "${pair} <id>" (this view form has no --json; read its plain output)`;
-			throw new Error(
-				`\`${pair}\` does not accept --limit (the CLI rejects it with "unknown flag: --limit") — only list-style commands do. ` +
-				`Working form: fetch the item directly, e.g. ${retryForm}; ` +
-				`or use the list form (e.g. "${words[i]} list") with limit.`,
-		);
+		if (NO_LIMIT_SUBCOMMANDS.has(`${words[i]} ${words[i + 1]}`)) {
+			isView = true;
+			break;
 		}
 	}
+	if (!isView) return { argv: [...argv], stripped: false };
+	const out: string[] = [];
+	let dropNext = false;
+	for (const token of argv) {
+		if (dropNext) {
+			dropNext = false;
+			continue;
+		}
+		if (token === "--limit") {
+			dropNext = true;
+			continue;
+		}
+		if (token.startsWith("--limit=")) continue;
+		out.push(token);
+	}
+	return { argv: out, stripped: out.length !== argv.length };
 }
 
 /**
@@ -363,13 +351,19 @@ export async function runGh(
 	const params = normalizeParams(rawParams);
 
 	if (!params.subcommand || params.subcommand.trim().length === 0) {
-		throw new Error("Pass a gh subcommand, for example `subcommand: 'repo list'` or `subcommand: 'pr list'`.");
+		throw new Error(
+			"Pass a gh subcommand, for example `subcommand: 'repo list'` or `subcommand: 'pr list'`. " +
+				"subcommand is not remembered between calls — pass it explicitly in every call.",
+		);
 	}
 	assertSafeCommand(params);
-	assertLimitUsage(params);
 
-	const argv = buildArgv(params);
-	const timeoutSeconds = Math.min(Math.max(params.timeoutSeconds ?? 30, 1), 120);
+	const { argv, stripped: limitStripped } = stripLimitForViewCommands(buildArgv(params), params.subcommand);
+	// Models echo CLI-style millisecond timeouts (60000, 120000); a multiple
+	// of 1000 above the cap is read as ms, everything else clamps to 120s.
+	let timeoutSeconds = params.timeoutSeconds ?? 30;
+	if (timeoutSeconds > 120 && timeoutSeconds % 1000 === 0) timeoutSeconds = timeoutSeconds / 1000;
+	timeoutSeconds = Math.min(Math.max(timeoutSeconds, 1), 120);
 
 	let result: ExecResult;
 	try {
@@ -410,6 +404,9 @@ export async function runGh(
 	if (truncation.truncated) {
 		text += `\n\n[Output truncated: ${truncation.outputLines} of ${truncation.totalLines} lines (${formatSize(truncation.outputBytes)} of ${formatSize(truncation.totalBytes)}).]`;
 	}
+	if (limitStripped) {
+		text += "\n\n[--limit removed: view-style subcommands fetch a single item and do not accept --limit.]";
+	}
 
 	return {
 		content: [{ type: "text", text }],
@@ -419,6 +416,7 @@ export async function runGh(
 			code,
 			killed: result.killed,
 			truncated: truncation.truncated,
+			limitStripped: limitStripped || undefined,
 		},
 		isError: code !== 0,
 	};
@@ -549,9 +547,9 @@ export default function ghExtension(pi: ExtensionAPI) {
 			timeoutSeconds: Type.Optional(
 				Type.Integer({
 					minimum: 1,
-					maximum: 120,
 					default: 30,
-					description: "Command timeout in seconds (default 30, max 120).",
+					description:
+						"Command timeout in seconds (default 30, max 120). A multiple of 1000 above 120 is treated as milliseconds.",
 				}),
 			),
 			forceDangerous: Type.Optional(

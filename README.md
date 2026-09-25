@@ -55,7 +55,7 @@ pi install git:github.com/sfroment/pi-gh-cli
 | `repo` | `string` | Target repository as `owner/repo` (→ `--repo owner/repo`). |
 | `jsonFields` | `string[]` | Fields to return as JSON (→ `--json field1,field2`). |
 | `jq` | `string` | jq expression to filter JSON output (→ `--jq expr`). |
-| `limit` | `integer` | Maximum results (→ `--limit N`). **Only list-style commands accept it** — view commands reject it; the tool refuses such calls with a working form. |
+| `limit` | `integer` | Maximum results (→ `--limit N`). **Only list-style commands accept it** — view commands reject it; the tool strips the flag and runs (noted in the output) instead of failing the call. |
 | `timeoutSeconds` | `integer` | Command timeout (default 30, max 120). |
 | `forceDangerous` | `boolean` | Opt-in for destructive commands (`repo delete`, `release delete`, `codespace delete`). |
 

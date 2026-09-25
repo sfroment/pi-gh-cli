@@ -18,7 +18,7 @@ The `gh` tool takes:
 - `repo` (optional string) — target repository as `owner/repo` (translates to `--repo owner/repo`).
 - `jsonFields` (optional string[]) — GitHub fields to return as JSON (translates to `--json field1,field2,...`). Must be set before `jq`.
 - `jq` (optional string) — jq expression to filter/project JSON output (translates to `--jq expr`). Requires `jsonFields` to produce JSON output; `--json` always precedes `--jq`.
-- `limit` (optional integer) — maximum number of results (translates to `--limit N`). **Only list-style commands accept it**; the `view` forms (`pr`, `issue`, `run`, `release`, `repo`, `gist`, `codespace`, `workflow`, `ruleset`, `project`) reject `--limit` with "unknown flag: --limit" — the tool refuses those calls with a working form instead (jsonFields where the view supports `--json`, plain output otherwise).
+- `limit` (optional integer) — maximum number of results (translates to `--limit N`). **Only list-style commands accept it**; the `view` forms (`pr`, `issue`, `run`, `release`, `repo`, `gist`, `codespace`, `workflow`, `ruleset`, `project`) reject `--limit` with "unknown flag: --limit" — the tool strips the flag and runs (noted in the output) instead of failing the call.
 - `timeoutSeconds` (optional, default 30, max 120) — command timeout.
 - `forceDangerous` (optional boolean) — opt-in for destructive commands (`repo delete`, `release delete`, `codespace delete`). Requires explicit user confirmation.
 

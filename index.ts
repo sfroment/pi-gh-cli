@@ -511,11 +511,9 @@ export default function ghExtension(pi: ExtensionAPI) {
 			"If the tool reports you are not authenticated, tell the user to run `gh auth login`.",
 		],
 		parameters: Type.Object({
-			subcommand: Type.Optional(
-				Type.String({
-					description: GH_SUBCOMMAND_DESCRIPTION,
-				}),
-			),
+			subcommand: Type.String({
+				description: GH_SUBCOMMAND_DESCRIPTION,
+			}),
 			args: Type.Optional(
 				Type.Union([
 					Type.Record(

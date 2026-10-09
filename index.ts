@@ -2,6 +2,7 @@ import {
 	DEFAULT_MAX_BYTES,
 	DEFAULT_MAX_LINES,
 	formatSize,
+	truncateHead,
 	truncateTail,
 	type ExtensionAPI,
 } from "@earendil-works/pi-coding-agent";
@@ -325,6 +326,14 @@ export function formatOutput(stdout: string, stderr: string): string {
 /** Result shape returned by the injected exec boundary (compatible with pi.exec). */
 export type ExecResult = { stdout?: string; stderr?: string; code?: number | null; killed?: boolean };
 
+/**
+ * Failed commands get a much tighter cap than success output: the diagnostic
+ * leads ("unknown flag", usage line), so keep the head and point to --help
+ * instead of flooding the context with the CLI's flag list.
+ */
+const ERROR_MAX_LINES = 12;
+const ERROR_MAX_BYTES = 2500;
+
 /** System boundary: spawns the gh CLI. Injected for testing. */
 export type GhExec = (
 	command: string,
@@ -394,15 +403,20 @@ export async function runGh(
 	}
 
 	const output = formatOutput(stdout, stderr);
-	const truncation = truncateTail(output, {
-		maxLines: DEFAULT_MAX_LINES,
-		maxBytes: DEFAULT_MAX_BYTES,
-	});
+	const failed = code !== 0;
+	const truncation = failed
+		? truncateHead(output, { maxLines: ERROR_MAX_LINES, maxBytes: ERROR_MAX_BYTES })
+		: truncateTail(output, {
+				maxLines: DEFAULT_MAX_LINES,
+				maxBytes: DEFAULT_MAX_BYTES,
+			});
 	const commandLine = `gh ${argv.join(" ")}`;
 	const codeText = code === null || code === undefined ? "unknown" : String(code);
 	let text = `Command: ${commandLine}\nExit code: ${codeText}${result.killed ? " (killed)" : ""}\n\n${truncation.content}`;
 	if (truncation.truncated) {
-		text += `\n\n[Output truncated: ${truncation.outputLines} of ${truncation.totalLines} lines (${formatSize(truncation.outputBytes)} of ${formatSize(truncation.totalBytes)}).]`;
+		text += failed
+			? `\n\n[Error output truncated: ${truncation.outputLines} of ${truncation.totalLines} lines — check the call shape; full usage: run \`gh ${argv.slice(0, 2).join(" ")} --help\` via bash.]`
+			: `\n\n[Output truncated: ${truncation.outputLines} of ${truncation.totalLines} lines (${formatSize(truncation.outputBytes)} of ${formatSize(truncation.totalBytes)}).]`;
 	}
 	if (limitStripped) {
 		text += "\n\n[--limit removed: view-style subcommands fetch a single item and do not accept --limit.]";

@@ -242,7 +242,8 @@ function normalizeParams(raw: RawGhParams): GhParams {
 		return harvestNestedArgs(rawArgs, rest, subcommand);
 	}
 
-	return { ...rest, subcommand, args: rawArgs };
+	// A bare primitive (out-schema junk) would serialize as per-character flags — drop it.
+	return { ...rest, subcommand, args: typeof rawArgs === "object" ? rawArgs : undefined };
 }
 
 /**
@@ -379,9 +380,8 @@ export type GhToolResult = {
 };
 
 /**
- * Coerce the caller-supplied timeout to seconds. Models echo CLI-style
- * millisecond timeouts (60000, 120000); a multiple of 1000 above the cap
- * is read as ms, everything else clamps to 1..120s.
+ * Models echo CLI-style millisecond timeouts (60000, 120000); a multiple
+ * of 1000 above the cap is read as ms, everything else clamps to 1..120s.
  */
 function coerceTimeoutSeconds(raw: number | undefined): number {
 	let seconds = raw ?? 30;
@@ -389,7 +389,6 @@ function coerceTimeoutSeconds(raw: number | undefined): number {
 	return Math.min(Math.max(seconds, 1), 120);
 }
 
-/** True when a finished gh run looks like the "not authenticated" failure. */
 function isAuthFailure(result: ExecResult): boolean {
 	return (
 		result.code !== 0 &&
@@ -397,7 +396,6 @@ function isAuthFailure(result: ExecResult): boolean {
 	);
 }
 
-/** Assemble the tool result for a finished gh run: header, output, footers, details. */
 function buildCommandResult(
 	subcommand: string,
 	argv: readonly string[],
@@ -530,7 +528,7 @@ ${GH_CALL_EXAMPLE_JSON}
 - \`jsonFields\` (top-level): string array for --json output.
 - \`jq\` (top-level): jq filter expression.
 - \`repo\` (top-level): target repo as owner/repo.
-- \`limit\` (top-level): max results. Only valid on list-style commands (e.g. \`pr list\`); \`view\` commands reject it with "unknown flag: --limit" — the tool refuses it with the working form.
+- \`limit\` (top-level): max results. Only valid on list-style commands (e.g. \`pr list\`); \`view\` commands reject it with "unknown flag: --limit" — the tool strips the flag and runs (noted in the output).
 
 Key patterns:
 - List PRs: \`subcommand: "pr list"\`, \`args: { state: "open" }\`, \`limit: 10\`.

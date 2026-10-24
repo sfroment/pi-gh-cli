@@ -158,7 +158,7 @@ describe("buildArgv mode#2 (nested args)", () => {
 	});
 });
 
-// --- Characterization pins for the mis-shape tolerance layer (issue #18) ---
+// --- Characterization pins for the mis-shape tolerance layer ---
 // Written BEFORE the normalizeParams deepening refactor to pin every edge the
 // A1/A2/A3 suites leave unpinned. All assert through buildArgv — the public
 // seam — never the implementation. If one of these fails after the refactor,
@@ -490,6 +490,7 @@ describe("GH_GUIDANCE content", () => {
 	test("A4.6 documents that only list-style commands accept limit", () => {
 		expect(GH_GUIDANCE).toContain("Only valid on list-style commands");
 		expect(GH_GUIDANCE).toContain("unknown flag: --limit");
+		expect(GH_GUIDANCE).toContain("the tool strips the flag and runs");
 	});
 });
 
@@ -564,6 +565,16 @@ describe("runGh", () => {
 		expect(res.content[0].text).toContain("gh auth login");
 	});
 
+	test("5c. not-authed printed to stdout is detected too", async () => {
+		const exec = makeFakeExec({
+			stdout: "You are not logged in to any GitHub hosts.",
+			stderr: "",
+			code: 2,
+		});
+		const res = await runGh({ subcommand: "repo list" }, exec);
+		expect(res.details).toMatchObject({ notAuthed: true, code: 2 });
+	});
+
 	test("6. repo delete refused before exec is called", async () => {
 		const exec = makeFakeExec({ stdout: "", code: 0 });
 		await expect(
@@ -601,6 +612,13 @@ describe("runGh", () => {
 		expect(res.isError).toBe(true);
 		expect(res.content[0].text).toContain("Exit code: unknown");
 		expect(res.content[0].text).not.toContain("Exit code: null");
+	});
+
+	test("8c. a killed run flags the exit code and the details", async () => {
+		const exec = makeFakeExec({ stdout: "partial output", code: null, killed: true });
+		const res = await runGh({ subcommand: "repo list" }, exec);
+		expect(res.content[0].text).toContain("(killed)");
+		expect(res.details).toMatchObject({ killed: true });
 	});
 
 	test("9a. pr view with limit strips --limit instead of failing", async () => {
@@ -758,6 +776,16 @@ describe("runGh tolerance", () => {
 		const res = await runGh({ args: { subcommand: "pr view 123", limit: 3 } }, exec);
 		expect(res.isError).toBe(false);
 		expect(exec.calls[0][1]).toEqual(["pr", "view", "123"]);
+	});
+
+	test("A3.11 a bare-string args (out-schema junk) is dropped, not flag-serialized", async () => {
+		const exec = makeFakeExec({ stdout: "ok", code: 0 });
+		const res = await runGh({
+			subcommand: "pr list",
+			args: "oops" as unknown as RawGhParams["args"],
+		}, exec);
+		expect(res.isError).toBe(false);
+		expect(exec.calls[0][1]).toEqual(["pr", "list"]);
 	});
 });
 

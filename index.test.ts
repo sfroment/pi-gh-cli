@@ -1,4 +1,4 @@
-import { assertSafeCommand, buildArgv, formatOutput, runGh, stripLimitForViewCommands, GH_GUIDANCE, GH_CALL_EXAMPLE, GH_ARGS_DESCRIPTION, GH_SUBCOMMAND_DESCRIPTION, type ExecResult, type GhExec, type GhParams } from "./index.ts";
+import { assertSafeCommand, buildArgv, formatOutput, runGh, stripLimitForViewCommands, GH_GUIDANCE, GH_CALL_EXAMPLE, GH_ARGS_DESCRIPTION, GH_SUBCOMMAND_DESCRIPTION, type ExecResult, type GhExec, type GhParams, type RawGhParams } from "./index.ts";
 import { describe, expect, mock, test } from "bun:test";
 
 describe("buildArgv", () => {
@@ -155,6 +155,142 @@ describe("buildArgv mode#2 (nested args)", () => {
 		expect(
 			buildArgv({ args: { subcommand: "pr list", limit: "5", state: "open" } }),
 		).toEqual(["pr", "list", "--limit", "5", "--state", "open"]);
+	});
+});
+
+// --- Characterization pins for the mis-shape tolerance layer (issue #18) ---
+// Written BEFORE the normalizeParams deepening refactor to pin every edge the
+// A1/A2/A3 suites leave unpinned. All assert through buildArgv — the public
+// seam — never the implementation. If one of these fails after the refactor,
+// behavior drifted.
+describe("normalizeParams characterization pins (through buildArgv)", () => {
+	// Mode #2: a type-mismatched known key falls through to a flag (A2.4 pins limit only).
+	test("P1. jsonFields nested as non-array becomes a --jsonFields flag", () => {
+		expect(buildArgv({ args: { subcommand: "pr list", jsonFields: "number,title" } }))
+			.toEqual(["pr", "list", "--jsonFields", "number,title"]);
+	});
+
+	test("P2. jq nested as non-string becomes a --jq flag", () => {
+		expect(buildArgv({ args: { subcommand: "pr list", jq: 5 } }))
+			.toEqual(["pr", "list", "--jq", "5"]);
+	});
+
+	test("P3. repo nested as non-string becomes a --repo flag", () => {
+		expect(buildArgv({ args: { subcommand: "pr list", repo: 42 } }))
+			.toEqual(["pr", "list", "--repo", "42"]);
+	});
+
+	test("P4. timeoutSeconds nested as non-number becomes a --timeoutSeconds flag", () => {
+		expect(buildArgv({ args: { subcommand: "pr list", timeoutSeconds: "30" } }))
+			.toEqual(["pr", "list", "--timeoutSeconds", "30"]);
+	});
+
+	test("P5. forceDangerous nested as non-boolean becomes a --forceDangerous flag", () => {
+		expect(buildArgv({ args: { subcommand: "repo delete", forceDangerous: "true" } }))
+			.toEqual(["repo", "delete", "--forceDangerous", "true"]);
+	});
+
+	// Mode #2: top-level wins — nested duplicates are dropped for every key (A2.3 pins jsonFields only).
+	test("P6. nested subcommand is dropped when top-level subcommand is set", () => {
+		expect(buildArgv({ subcommand: "pr list", args: { subcommand: "issue list" } }))
+			.toEqual(["pr", "list"]);
+	});
+
+	test("P7. nested timeoutSeconds/forceDangerous dropped when top-level set", () => {
+		expect(
+			buildArgv({
+				subcommand: "repo delete",
+				timeoutSeconds: 30,
+				forceDangerous: true,
+				args: { timeoutSeconds: 60, forceDangerous: false },
+			}),
+		).toEqual(["repo", "delete"]);
+	});
+
+	// subcommand's unset check is falsy-based: "" lets a nested subcommand through.
+	test("P8. empty-string top-level subcommand lets the nested one through", () => {
+		expect(buildArgv({ subcommand: "", args: { subcommand: "pr list" } })).toEqual(["pr", "list"]);
+	});
+
+	test("P8b. non-string nested subcommand becomes a flag, and the call then throws for missing subcommand", () => {
+		expect(() => buildArgv({ args: { subcommand: 5 } })).toThrow(/subcommand is required/);
+	});
+
+	// args nested inside args — both shapes merge their flags into the outer call.
+	test("P9. array-form args nested in object args merge flags", () => {
+		expect(buildArgv({ args: { subcommand: "pr list", args: ["--state", "open"] } }))
+			.toEqual(["pr", "list", "--state", "open"]);
+	});
+
+	test("P10. object-form args nested in object args merge flags", () => {
+		// The tool schema types args values as scalars; a nested args object is
+		// still reachable at runtime (arbitrary JSON params) — pin the tolerance.
+		const raw = { args: { subcommand: "pr list", args: { state: "open" } } } as unknown as RawGhParams;
+		expect(buildArgv(raw)).toEqual(["pr", "list", "--state", "open"]);
+	});
+
+	// Mode #1 token-walk edges.
+	test("P11. --flag=value equals-form parses", () => {
+		expect(buildArgv({ subcommand: "pr", args: ["list", "--state=open"] }))
+			.toEqual(["pr", "list", "--state", "open"]);
+	});
+
+	test("P12. valueless --json token is dropped when top-level jsonFields unset", () => {
+		expect(buildArgv({ subcommand: "pr", args: ["list", "--json"] })).toEqual(["pr", "list"]);
+	});
+
+	test("P13. valueless --limit token is dropped when top-level limit unset", () => {
+		expect(buildArgv({ subcommand: "pr", args: ["list", "--limit"] })).toEqual(["pr", "list"]);
+	});
+
+	test("P14. a --prefixed token is never consumed as the previous flag's value", () => {
+		expect(buildArgv({ subcommand: "pr", args: ["list", "--state", "--open"] }))
+			.toEqual(["pr", "list", "--state", "--open"]);
+	});
+
+	// Mode #1 promotion — A1.2 pins --json only; pin the other three promotables.
+	test("P15. array-args --jq/--repo/--limit promote to top-level when unset", () => {
+		expect(
+			buildArgv({ subcommand: "pr", args: ["list", "--jq", ".[].title", "--repo", "o/r", "--limit", "5"] }),
+		).toEqual(["pr", "list", "--repo", "o/r", "--jq", ".[].title", "--limit", "5"]);
+	});
+
+	// `args` inside args with a scalar or null shape — no merge, and the value
+	// stays visible: a scalar becomes a flag, null is skipped by buildArgv.
+	test("P16. scalar args nested in object args stays a flag, never dropped", () => {
+		expect(buildArgv({ args: { subcommand: "pr list", args: "oops" } }))
+			.toEqual(["pr", "list", "--args", "oops"]);
+	});
+
+	test("P17. null args nested in object args is skipped by serialization", () => {
+		expect(buildArgv({ args: { subcommand: "pr list", args: null } }))
+			.toEqual(["pr", "list"]);
+	});
+
+	// Fields promoted inside the nested array args lift through the recursion.
+	test("P18. --json inside array-args nested in object args is harvested", () => {
+		expect(buildArgv({ args: { subcommand: "pr list", args: ["--json", "number,title"] } }))
+			.toEqual(["pr", "list", "--json", "number,title"]);
+	});
+
+	test("P19. positionals inside array-args nested in object args become the subcommand", () => {
+		expect(buildArgv({ args: { args: ["pr", "list", "--state", "open"] } }))
+			.toEqual(["pr", "list", "--state", "open"]);
+	});
+
+	// Top-level fields win even through the array-args recursion: the nested
+	// --json is dropped because the top-level jsonFields is already set.
+	test("P20. top-level jsonFields win over --json inside nested array args", () => {
+		expect(
+			buildArgv({ subcommand: "pr list", jsonFields: ["top"], args: { args: ["--json", "nested"] } }),
+		).toEqual(["pr", "list", "--json", "top"]);
+	});
+
+	// args: null is out-schema for the tool but reachable in raw JSON — the
+	// exported buildArgv tolerates it as "no flags".
+	test("P21. null args serializes to no flags, not a crash", () => {
+		const raw = { subcommand: "pr list", args: null } as unknown as RawGhParams;
+		expect(buildArgv(raw)).toEqual(["pr", "list"]);
 	});
 });
 

@@ -242,7 +242,8 @@ function normalizeParams(raw: RawGhParams): GhParams {
 		return harvestNestedArgs(rawArgs, rest, subcommand);
 	}
 
-	return { ...rest, subcommand, args: rawArgs };
+	// A bare primitive (out-schema junk) would serialize as per-character flags — drop it.
+	return { ...rest, subcommand, args: typeof rawArgs === "object" ? rawArgs : undefined };
 }
 
 /**
@@ -371,20 +372,75 @@ export type GhExec = (
 	options: { signal?: AbortSignal; timeout?: number },
 ) => Promise<ExecResult>;
 
+/** Result shape returned by runGh — the same shape as a Pi tool result. */
+export type GhToolResult = {
+	content: { type: "text"; text: string }[];
+	details: Record<string, unknown>;
+	isError: boolean;
+};
+
+/**
+ * Models echo CLI-style millisecond timeouts (60000, 120000); a multiple
+ * of 1000 above the cap is read as ms, everything else clamps to 1..120s.
+ */
+function coerceTimeoutSeconds(raw: number | undefined): number {
+	let seconds = raw ?? 30;
+	if (seconds > 120 && seconds % 1000 === 0) seconds = seconds / 1000;
+	return Math.min(Math.max(seconds, 1), 120);
+}
+
+function isAuthFailure(result: ExecResult): boolean {
+	return (
+		result.code !== 0 &&
+		(NOT_AUTHED.test(result.stdout ?? "") || NOT_AUTHED.test(result.stderr ?? ""))
+	);
+}
+
+function buildCommandResult(
+	subcommand: string,
+	argv: readonly string[],
+	result: ExecResult,
+	limitStripped: boolean,
+): GhToolResult {
+	const output = formatOutput(result.stdout ?? "", result.stderr ?? "");
+	const truncation = truncateTail(output, {
+		maxLines: DEFAULT_MAX_LINES,
+		maxBytes: DEFAULT_MAX_BYTES,
+	});
+	const commandLine = `gh ${argv.join(" ")}`;
+	const code = result.code;
+	const codeText = code === null || code === undefined ? "unknown" : String(code);
+	let text = `Command: ${commandLine}\nExit code: ${codeText}${result.killed ? " (killed)" : ""}\n\n${truncation.content}`;
+	if (truncation.truncated) {
+		text += `\n\n[Output truncated: ${truncation.outputLines} of ${truncation.totalLines} lines (${formatSize(truncation.outputBytes)} of ${formatSize(truncation.totalBytes)}).]`;
+	}
+	if (limitStripped) {
+		text += "\n\n[--limit removed: view-style subcommands fetch a single item and do not accept --limit.]";
+	}
+
+	return {
+		content: [{ type: "text", text }],
+		details: {
+			subcommand,
+			argv,
+			code,
+			killed: result.killed,
+			truncated: truncation.truncated,
+			limitStripped: limitStripped || undefined,
+		},
+		isError: code !== 0,
+	};
+}
+
 /**
  * Core execution logic, separated from the Pi tool wiring so it can be tested
- * with an injected `exec` (the only system boundary). Returns the same shape
- * as a Pi tool result.
+ * with an injected `exec` (the only system boundary).
  */
 export async function runGh(
 	rawParams: RawGhParams,
 	exec: GhExec,
 	signal?: AbortSignal,
-): Promise<{
-	content: { type: "text"; text: string }[];
-	details: Record<string, unknown>;
-	isError: boolean;
-}> {
+): Promise<GhToolResult> {
 	// Normalize before guard: the model may nest subcommand inside args,
 	// so we must harvest it before assertSafeCommand can see it.
 	const params = normalizeParams(rawParams);
@@ -398,26 +454,18 @@ export async function runGh(
 	assertSafeCommand(params);
 
 	const { argv, stripped: limitStripped } = stripLimitForViewCommands(buildArgv(params), params.subcommand);
-	// Models echo CLI-style millisecond timeouts (60000, 120000); a multiple
-	// of 1000 above the cap is read as ms, everything else clamps to 120s.
-	let timeoutSeconds = params.timeoutSeconds ?? 30;
-	if (timeoutSeconds > 120 && timeoutSeconds % 1000 === 0) timeoutSeconds = timeoutSeconds / 1000;
-	timeoutSeconds = Math.min(Math.max(timeoutSeconds, 1), 120);
+	const timeoutMs = coerceTimeoutSeconds(params.timeoutSeconds) * 1000;
 
 	let result: ExecResult;
 	try {
-		result = await exec("gh", argv, { signal, timeout: timeoutSeconds * 1000 });
+		result = await exec("gh", argv, { signal, timeout: timeoutMs });
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		throw new Error(`Failed to run gh CLI. Is it installed and on PATH? ${message}`);
 	}
 
-	const stdout = result.stdout ?? "";
-	const stderr = result.stderr ?? "";
-	const code = result.code;
-
-	// Detect the common "not authenticated" failure and give actionable guidance.
-	if (code !== 0 && (NOT_AUTHED.test(stdout) || NOT_AUTHED.test(stderr))) {
+	// Give actionable guidance instead of the raw auth failure.
+	if (isAuthFailure(result)) {
 		return {
 			content: [
 				{
@@ -427,38 +475,12 @@ export async function runGh(
 						"then retry the command.",
 				},
 			],
-			details: { subcommand: params.subcommand, code, notAuthed: true },
+			details: { subcommand: params.subcommand, code: result.code, notAuthed: true },
 			isError: true,
 		};
 	}
 
-	const output = formatOutput(stdout, stderr);
-	const truncation = truncateTail(output, {
-		maxLines: DEFAULT_MAX_LINES,
-		maxBytes: DEFAULT_MAX_BYTES,
-	});
-	const commandLine = `gh ${argv.join(" ")}`;
-	const codeText = code === null || code === undefined ? "unknown" : String(code);
-	let text = `Command: ${commandLine}\nExit code: ${codeText}${result.killed ? " (killed)" : ""}\n\n${truncation.content}`;
-	if (truncation.truncated) {
-		text += `\n\n[Output truncated: ${truncation.outputLines} of ${truncation.totalLines} lines (${formatSize(truncation.outputBytes)} of ${formatSize(truncation.totalBytes)}).]`;
-	}
-	if (limitStripped) {
-		text += "\n\n[--limit removed: view-style subcommands fetch a single item and do not accept --limit.]";
-	}
-
-	return {
-		content: [{ type: "text", text }],
-		details: {
-			subcommand: params.subcommand,
-			argv,
-			code,
-			killed: result.killed,
-			truncated: truncation.truncated,
-			limitStripped: limitStripped || undefined,
-		},
-		isError: code !== 0,
-	};
+	return buildCommandResult(params.subcommand, argv, result, limitStripped);
 }
 
 const baseDir = dirname(fileURLToPath(import.meta.url));
@@ -506,7 +528,7 @@ ${GH_CALL_EXAMPLE_JSON}
 - \`jsonFields\` (top-level): string array for --json output.
 - \`jq\` (top-level): jq filter expression.
 - \`repo\` (top-level): target repo as owner/repo.
-- \`limit\` (top-level): max results. Only valid on list-style commands (e.g. \`pr list\`); \`view\` commands reject it with "unknown flag: --limit" — the tool refuses it with the working form.
+- \`limit\` (top-level): max results. Only valid on list-style commands (e.g. \`pr list\`); \`view\` commands reject it with "unknown flag: --limit" — the tool strips the flag and runs (noted in the output).
 
 Key patterns:
 - List PRs: \`subcommand: "pr list"\`, \`args: { state: "open" }\`, \`limit: 10\`.

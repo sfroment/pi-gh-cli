@@ -11,10 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `limit` on `view` commands is now stripped from argv and executed (noted in the output, `limitStripped` detail) instead of failing the call — the model's intent (fetch the item) is unambiguous.
 - `timeoutSeconds` above 120 that is a multiple of 1000 is treated as milliseconds (models echo CLI-style `60000`); the schema `maximum` is gone, the runtime clamp stays.
 - The missing-`subcommand` error now states that `subcommand` is not remembered between calls.
+- A bare primitive `args` (out-schema junk that can reach the tool as raw JSON) is now dropped instead of serializing into per-character `--0 o` flags.
 
 ### Changed
-- `limit` guidance in the tool description, prompt guidelines, and skill now states that only list-style commands accept `--limit`.
-- Internal, no behavior change: the mis-shape tolerance layer (`normalizeParams`) is now data-driven — one spec table per mis-shape mode replaces the per-key hand-rolled branches, split into `parseFlagToken`/`parseArrayArgs`/`mergeNestedArgs`/`harvestNestedArgs` (every function at CRAP ≤ 10 with 100% line coverage). The dead `VIEW_PAIRS_WITH_JSON` constant left from the replaced `assertLimitUsage` guard is gone.
+- Internal, no behavior change: `runGh` is now single-level orchestration over three pure seams — `coerceTimeoutSeconds` (timeout policy), `isAuthFailure` (auth-failure predicate), `buildCommandResult` (result assembly) — with the return shape named `GhToolResult` (runGh and each seam at CRAP ≤ 10 with 100% line coverage).
+- `limit` guidance in the injected prompt guidance and skill now states that only list-style commands accept `--limit`.
+- Internal, no behavior change: the mis-shape tolerance layer (`normalizeParams`) is now data-driven — one spec table per mis-shape mode replaces the per-key hand-rolled branches, split into `parseFlagToken`/`parseArrayArgs`/`mergeNestedArgs`/`harvestNestedArgs` (each of the split functions at CRAP ≤ 10 with 100% line coverage). The dead `VIEW_PAIRS_WITH_JSON` constant left from the replaced `assertLimitUsage` guard is gone.
 - Removed environment-specific references from docs and packaging (author email domain).
 - Made `scripts/link-pi-deps.sh` portable (PI_RUNTIME_DIR override + `npm root -g`, no hardcoded paths).
 - Regenerated `bun.lock` against the public npm registry (format v2, no registry URLs); CI and release workflows bumped to bun 1.4 for the lockfile format, with a Type-check step (`tsc --noEmit`, pinned `typescript` devDependency) added to both.

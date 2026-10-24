@@ -247,9 +247,9 @@ function normalizeParams(raw: RawGhParams): GhParams {
 }
 
 /**
- * One typed args entry as argv tokens: false/null/undefined vanish, true
- * is a bare flag, an array repeats the flag per element, everything else
- * is a flag+String pair. Keys without a `--` prefix are prefixed.
+ * One typed args entry as its argv tokens — gh takes flags as `--key`
+ * alone or `--key value` pairs, and a falsy value means the flag was
+ * not passed, never `--key false`.
  */
 function flagValueTokens(
 	key: string,

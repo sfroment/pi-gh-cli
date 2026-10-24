@@ -36,22 +36,6 @@ const NO_LIMIT_SUBCOMMANDS = new Set([
 	"project view",
 ]);
 
-/**
- * View pairs whose view form supports `--json` (verified against the real
- * gh binary, v2.100: `gh run view --help` lists `--json fields`; note older
- * gh releases lacked --json on run view). Used to tailor the guard's retry
- * suggestion — suggesting jsonFields to a pair without --json support would
- * just trade one unknown-flag error for another.
- */
-const VIEW_PAIRS_WITH_JSON = new Set([
-	"pr view",
-	"issue view",
-	"run view",
-	"release view",
-	"repo view",
-	"codespace view",
-]);
-
 export type GhParams = {
 	subcommand: string;
 	args?: Record<string, string | number | boolean | string[] | null | undefined>;
@@ -68,13 +52,181 @@ export type RawGhParams = Omit<GhParams, "subcommand" | "args"> & {
 	args?: GhParams["args"] | string[];
 };
 
-/** Flags in array-args that promote to typed top-level fields when unset. */
-const PROMOTABLE_FLAGS = new Set(["json", "jq", "repo", "limit"]);
+/**
+ * Mode #1's spec table: array-args flag spellings that promote to a
+ * top-level field, with each field's parse step — one row per flag.
+ */
+const PROMOTABLE_FLAGS = new Map<
+	string,
+	{ field: "jsonFields" | "jq" | "repo" | "limit"; parse: (raw: string) => unknown }
+>([
+	["json", { field: "jsonFields", parse: (raw) => raw.split(",") }],
+	["jq", { field: "jq", parse: (raw) => raw }],
+	["repo", { field: "repo", parse: (raw) => raw }],
+	["limit", { field: "limit", parse: (raw) => parseInt(raw, 10) }],
+]);
+
+/** Type guards deciding whether a nested value may harvest to each top-level key (mode #2). */
+const KNOWN_KEY_GUARDS = new Map<string, (value: unknown) => boolean>([
+	["subcommand", (v) => typeof v === "string"],
+	["jsonFields", (v) => Array.isArray(v)],
+	["jq", (v) => typeof v === "string"],
+	["repo", (v) => typeof v === "string"],
+	["limit", (v) => typeof v === "number"],
+	["timeoutSeconds", (v) => typeof v === "number"],
+	["forceDangerous", (v) => typeof v === "boolean"],
+]);
+
+/**
+ * Parse the flag token at tokens[start]: `--name`, `--name=value`, or
+ * `--name value` (consuming the next token when it is not itself a flag).
+ */
+function parseFlagToken(tokens: readonly string[], start: number): {
+	name: string;
+	value?: string;
+	next: number;
+} {
+	const token = tokens[start];
+	const eq = token.indexOf("=");
+	if (eq !== -1) {
+		return { name: token.slice(2, eq), value: token.slice(eq + 1), next: start };
+	}
+	if (start + 1 < tokens.length && !tokens[start + 1].startsWith("--")) {
+		return { name: token.slice(2), value: tokens[start + 1], next: start + 1 };
+	}
+	return { name: token.slice(2), next: start };
+}
+
+/**
+ * Parse array-form args (mode #1): positional tokens extend the subcommand,
+ * flag tokens become args entries, and the top-level spellings (json, jq,
+ * repo, limit) promote when unset. `promoted` is seeded with the top-level
+ * fields, so a set field drops its parsed duplicate and top-level always wins.
+ */
+function parseArrayArgs(
+	subcommand: string,
+	tokens: readonly string[],
+	rest: RawGhParams,
+): Partial<GhParams> & { subcommand: string } {
+	const parts: string[] = subcommand.trim().split(/\s+/).filter(Boolean);
+	const flags: NonNullable<GhParams["args"]> = {};
+	const promoted: Record<string, unknown> = {};
+	for (const { field } of PROMOTABLE_FLAGS.values()) {
+		promoted[field] = rest[field];
+	}
+
+	for (let i = 0; i < tokens.length; i++) {
+		const token = tokens[i];
+		if (!token.startsWith("--")) {
+			parts.push(token);
+			continue;
+		}
+		const { name, value, next } = parseFlagToken(tokens, i);
+		i = next;
+		const promote = PROMOTABLE_FLAGS.get(name);
+		if (promote === undefined) {
+			flags[name] = value === undefined ? true : value;
+		} else if (value !== undefined && promoted[promote.field] === undefined) {
+			promoted[promote.field] = promote.parse(value);
+		}
+		// A promotable flag whose top-level field is already set, or that carries
+		// no value, is dropped — the top-level field always wins.
+	}
+
+	return {
+		...promoted,
+		subcommand: parts.join(" "),
+		args: Object.keys(flags).length > 0 ? flags : undefined,
+	} as Partial<GhParams> & { subcommand: string };
+}
+
+/** Mode #2 harvest state: keys lifted to the top level, and flags kept in args. */
+type HarvestState = {
+	harvested: Record<string, unknown>;
+	remaining: NonNullable<GhParams["args"]>;
+};
+
+/**
+ * Fold `args` found inside object args into the harvest. Array form recurses
+ * via mode #1 (normalizeParams) and lifts the fields it promoted — a
+ * subcommand only lifts when non-empty, so an inner "" never clobbers an
+ * already-harvested one; object form merges its entries as flags. Returns
+ * false for any other shape so the caller keeps the value as a flag.
+ */
+function mergeNestedArgs(
+	value: unknown,
+	rest: RawGhParams,
+	subcommand: string,
+	harvest: HarvestState,
+): boolean {
+	if (Array.isArray(value)) {
+		const inner = normalizeParams({ ...rest, subcommand, args: value as string[] });
+		if (inner.subcommand && !subcommand) harvest.harvested.subcommand = inner.subcommand;
+		for (const { field } of PROMOTABLE_FLAGS.values()) {
+			// No unset-check against rest here: parseArrayArgs seeds the promoted
+			// fields from rest, so when a top-level field is set the inner value
+			// can only echo it — harvesting is idempotent and needs no guard.
+			const innerValue = (inner as Record<string, unknown>)[field];
+			if (innerValue !== undefined) harvest.harvested[field] = innerValue;
+		}
+		if (inner.args) Object.assign(harvest.remaining, inner.args);
+		return true;
+	}
+	if (typeof value === "object" && value !== null) {
+		Object.assign(harvest.remaining, value as Record<string, string | number | boolean | string[]>);
+		return true;
+	}
+	return false;
+}
+
+/**
+ * Harvest object-form args (mode #2): known top-level keys nested inside
+ * `args` lift to the top when unset and type-compatible. A set top-level
+ * key drops its nested duplicate; a type-mismatched value falls through to
+ * a flag so a mis-typed known key (e.g. {args:{limit:"5"}}) becomes
+ * --limit 5 instead of being silently dropped.
+ */
+function harvestNestedArgs(
+	rawArgs: Record<string, unknown>,
+	rest: RawGhParams,
+	subcommand: string,
+): GhParams {
+	const topLevel = rest as Record<string, unknown>;
+	const harvest: HarvestState = { harvested: {}, remaining: {} };
+
+	for (const [key, value] of Object.entries(rawArgs)) {
+		const guard = KNOWN_KEY_GUARDS.get(key);
+		if (guard === undefined) {
+			// `args` inside args folds in via mergeNestedArgs; anything else
+			// (including a non-object `args` value) stays a flag — never dropped.
+			if (key !== "args" || !mergeNestedArgs(value, rest, subcommand, harvest)) {
+				harvest.remaining[key] = value as string | number | boolean | string[];
+			}
+			continue;
+		}
+		// subcommand's unset check is falsy-based: "" lets a nested value through.
+		const unset = key === "subcommand" ? !subcommand : topLevel[key] === undefined;
+		if (!unset) continue; // top-level wins — the nested duplicate is dropped
+		if (guard(value)) harvest.harvested[key] = value;
+		// Type mismatch — kept as a flag, never silently dropped.
+		else harvest.remaining[key] = value as string | number | boolean | string[];
+	}
+
+	// harvested holds only keys that were unset in rest, so it wins by spread;
+	// the one cast trades seven hand-rolled ?? chains for the spread rule.
+	return {
+		...rest,
+		...harvest.harvested,
+		subcommand: (harvest.harvested.subcommand as string | undefined) ?? subcommand,
+		args: Object.keys(harvest.remaining).length > 0 ? harvest.remaining : undefined,
+	} as GhParams;
+}
 
 /**
  * Normalize raw tool params into canonical GhParams. Tolerates two mis-shaped
- * calls the model produces: args as a JSON array (mode #1) and known top-level
- * keys nested inside an object args (mode #2). Top-level fields always win.
+ * calls the model produces: args as a JSON array (mode #1, parseArrayArgs)
+ * and known top-level keys nested inside an object args (mode #2,
+ * harvestNestedArgs). Top-level fields always win.
  */
 function normalizeParams(raw: RawGhParams): GhParams {
 	const { args: rawArgs, ...rest } = raw;
@@ -82,125 +234,12 @@ function normalizeParams(raw: RawGhParams): GhParams {
 
 	// Mode #1: args is an array of positional/flag tokens.
 	if (Array.isArray(rawArgs)) {
-		const parts: string[] = subcommand.trim().split(/\s+/).filter(Boolean);
-		const flags: NonNullable<GhParams["args"]> = {};
-		let jsonFields = rest.jsonFields;
-		let jq = rest.jq;
-		let repo = rest.repo;
-		let limit = rest.limit;
-
-		for (let i = 0; i < rawArgs.length; i++) {
-			const token = rawArgs[i];
-			if (token.startsWith("--")) {
-				let name: string;
-				let value: string | undefined;
-
-				const eq = token.indexOf("=");
-				if (eq >= 0) {
-					name = token.slice(2, eq);
-					value = token.slice(eq + 1);
-				} else {
-					name = token.slice(2);
-					if (i + 1 < rawArgs.length && !rawArgs[i + 1].startsWith("--")) {
-						value = rawArgs[++i];
-					}
-				}
-
-				if (PROMOTABLE_FLAGS.has(name)) {
-					if (name === "json" && jsonFields === undefined && value !== undefined) {
-						jsonFields = value.split(",");
-					} else if (name === "jq" && jq === undefined && value !== undefined) {
-						jq = value;
-					} else if (name === "repo" && repo === undefined && value !== undefined) {
-						repo = value;
-					} else if (name === "limit" && limit === undefined && value !== undefined) {
-						limit = parseInt(value, 10);
-					}
-					// If top-level is already set, the parsed duplicate is dropped.
-				} else {
-					flags[name] = value === undefined ? true : value;
-				}
-			} else {
-				parts.push(token);
-			}
-		}
-
-		return {
-			...rest,
-			subcommand: parts.join(" "),
-			args: Object.keys(flags).length > 0 ? flags : undefined,
-			jsonFields,
-			jq,
-			repo,
-			limit,
-		};
+		return { ...rest, ...parseArrayArgs(subcommand, rawArgs, rest) };
 	}
 
-	// Object args or no args — harvest known top-level keys from nested args (mode #2).
-	if (rawArgs && typeof rawArgs === "object" && !Array.isArray(rawArgs)) {
-		const knownKeys: (keyof RawGhParams)[] = [
-			"subcommand", "jsonFields", "jq", "repo", "limit", "timeoutSeconds", "forceDangerous",
-		];
-		const harvested: Partial<GhParams> = {};
-		const remaining: NonNullable<GhParams["args"]> = {};
-
-		for (const [key, value] of Object.entries(rawArgs)) {
-			if (knownKeys.includes(key as keyof RawGhParams)) {
-				// Top-level wins — only harvest when unset AND the type matches.
-				// When top-level is already set, the nested duplicate is dropped entirely.
-				// When top-level is unset but the type mismatches, fall through to a flag
-				// so a mis-typed knownKey (e.g. {args:{limit:"5"}}) becomes --limit 5
-				// instead of being silently dropped.
-				if (key === "subcommand") {
-					if (!subcommand && typeof value === "string") harvested.subcommand = value;
-					else if (!subcommand) remaining[key] = value as string | number | boolean | string[];
-				} else if (key === "jsonFields") {
-					if (rest.jsonFields === undefined && Array.isArray(value)) harvested.jsonFields = value as string[];
-					else if (rest.jsonFields === undefined) remaining[key] = value as string | number | boolean | string[];
-				} else if (key === "jq") {
-					if (rest.jq === undefined && typeof value === "string") harvested.jq = value;
-					else if (rest.jq === undefined) remaining[key] = value as string | number | boolean | string[];
-				} else if (key === "repo") {
-					if (rest.repo === undefined && typeof value === "string") harvested.repo = value;
-					else if (rest.repo === undefined) remaining[key] = value as string | number | boolean | string[];
-				} else if (key === "limit") {
-					if (rest.limit === undefined && typeof value === "number") harvested.limit = value;
-					else if (rest.limit === undefined) remaining[key] = value as string | number | boolean | string[];
-				} else if (key === "timeoutSeconds") {
-					if (rest.timeoutSeconds === undefined && typeof value === "number") harvested.timeoutSeconds = value;
-					else if (rest.timeoutSeconds === undefined) remaining[key] = value as string | number | boolean | string[];
-				} else if (key === "forceDangerous") {
-					if (rest.forceDangerous === undefined && typeof value === "boolean") harvested.forceDangerous = value;
-					else if (rest.forceDangerous === undefined) remaining[key] = value as string | number | boolean | string[];
-				}
-			} else if (key === "args" && Array.isArray(value)) {
-				// Nested args inside args (array form) — recurse via mode #1.
-				const inner = normalizeParams({ ...rest, subcommand, args: value });
-				if (inner.subcommand && !subcommand) harvested.subcommand = inner.subcommand;
-				if (inner.jsonFields !== undefined && rest.jsonFields === undefined) harvested.jsonFields = inner.jsonFields;
-				if (inner.jq !== undefined && rest.jq === undefined) harvested.jq = inner.jq;
-				if (inner.repo !== undefined && rest.repo === undefined) harvested.repo = inner.repo;
-				if (inner.limit !== undefined && rest.limit === undefined) harvested.limit = inner.limit;
-				if (inner.args) Object.assign(remaining, inner.args);
-			} else if (key === "args" && typeof value === "object" && value !== null && !Array.isArray(value)) {
-				// Nested args inside args (object form) — merge remaining flags.
-				Object.assign(remaining, value as Record<string, string | number | boolean | string[]>);
-			} else {
-				remaining[key] = value as string | number | boolean | string[];
-			}
-		}
-
-		return {
-			...rest,
-			subcommand: harvested.subcommand ?? subcommand,
-			args: Object.keys(remaining).length > 0 ? remaining : undefined,
-			jsonFields: harvested.jsonFields ?? rest.jsonFields,
-			jq: harvested.jq ?? rest.jq,
-			repo: harvested.repo ?? rest.repo,
-			limit: harvested.limit ?? rest.limit,
-			timeoutSeconds: harvested.timeoutSeconds ?? rest.timeoutSeconds,
-			forceDangerous: harvested.forceDangerous ?? rest.forceDangerous,
-		};
+	// Mode #2: object args — harvest known top-level keys from nested args.
+	if (rawArgs && typeof rawArgs === "object") {
+		return harvestNestedArgs(rawArgs, rest, subcommand);
 	}
 
 	return { ...rest, subcommand, args: rawArgs };

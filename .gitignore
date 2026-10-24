@@ -1,4 +1,10 @@
 node_modules/
+
+# Gate-tool artifacts (crapper / dryer / mutator / coverage)
+.metrics/
+coverage/
+target/
+
 # Symlinks into the pi runtime — recreated by scripts/link-pi-deps.sh
 node_modules/@earendil-works/pi-coding-agent
 node_modules/@earendil-works/pi-ai

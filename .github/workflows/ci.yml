@@ -30,7 +30,7 @@ jobs:
           bun-version: ${{ matrix.bun }}
 
       - name: Install dependencies
-        # Retry truncated downloads until https://github.com/oven-sh/bun/pull/34827 ships.
+        # Retry: bun install can fail on truncated registry downloads.
         run: |
           for attempt in 1 2 3; do
             if bun install --frozen-lockfile; then

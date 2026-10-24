@@ -247,14 +247,28 @@ function normalizeParams(raw: RawGhParams): GhParams {
 }
 
 /**
+ * One typed args entry as its argv tokens — gh takes flags as `--key`
+ * alone or `--key value` pairs, and a falsy value means the flag was
+ * not passed, never `--key false`.
+ */
+function flagValueTokens(
+	key: string,
+	value: string | number | boolean | string[] | null | undefined,
+): string[] {
+	if (value === false || value === null || value === undefined) return [];
+	const flag = key.startsWith("--") ? key : `--${key}`;
+	if (value === true) return [flag];
+	if (Array.isArray(value)) return value.flatMap((v) => [flag, String(v)]);
+	return [flag, String(value)];
+}
+
+/**
  * Serialize params into the gh CLI's argv format.
  *
- * The subcommand is split on whitespace (e.g. "repo list" → ["repo", "list"]).
- * Args are serialized as `--flag value` token pairs; booleans become bare
- * `--flag` tokens; arrays become repeated `--flag value` pairs;
- * false/null/undefined are skipped. Keys without a `--` prefix are prefixed.
- * Global flags (--repo, --json, --jq, --limit) are appended after subcommand
- * and args, in that order (--json before --jq).
+ * The subcommand is split on whitespace (e.g. "repo list" → ["repo", "list"])
+ * and args entries serialize via flagValueTokens. Global flags (--repo,
+ * --json, --jq, --limit) are appended after subcommand and args, in that
+ * order (--json before --jq).
  */
 export function buildArgv(params: RawGhParams): string[] {
 	const normalized = normalizeParams(params);
@@ -264,19 +278,8 @@ export function buildArgv(params: RawGhParams): string[] {
 	}
 
 	const argv: string[] = trimmed.split(/\s+/);
-	const args = normalized.args ?? {};
-	for (const [key, value] of Object.entries(args)) {
-		if (value === false || value === null || value === undefined) continue;
-		const flag = key.startsWith("--") ? key : `--${key}`;
-		if (value === true) {
-			argv.push(flag);
-		} else if (Array.isArray(value)) {
-			for (const v of value) {
-				argv.push(flag, String(v));
-			}
-		} else {
-			argv.push(flag, String(value));
-		}
+	for (const [key, value] of Object.entries(normalized.args ?? {})) {
+		argv.push(...flagValueTokens(key, value));
 	}
 
 	if (normalized.repo) {

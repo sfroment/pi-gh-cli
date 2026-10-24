@@ -93,6 +93,10 @@ describe("buildArgv", () => {
 	test("13b. whitespace-only subcommand throws", () => {
 		expect(() => buildArgv({ subcommand: "   " })).toThrow(/subcommand/i);
 	});
+
+	test("14. empty jsonFields produce no --json token", () => {
+		expect(buildArgv({ subcommand: "pr list", jsonFields: [] })).toEqual(["pr", "list"]);
+	});
 });
 
 describe("buildArgv mode#1 (array args)", () => {
@@ -441,6 +445,18 @@ describe("formatOutput", () => {
 
 	test("4. whitespace-only is treated as empty", () => {
 		expect(formatOutput("   \n  ", "  ")).toBe("(no output)");
+	});
+
+	test("5. single-char stdout is output, not the placeholder", () => {
+		expect(formatOutput("x", "")).toBe("x");
+	});
+
+	test("6. single-char stderr is appended with the label", () => {
+		expect(formatOutput("", "x")).toBe("stderr:\nx");
+	});
+
+	test("7. whitespace-only stdout adds no empty section ahead of stderr", () => {
+		expect(formatOutput(" ", "err")).toBe("stderr:\nerr");
 	});
 });
 

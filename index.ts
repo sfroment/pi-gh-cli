@@ -495,7 +495,15 @@ export async function runGh(
 const baseDir = dirname(fileURLToPath(import.meta.url));
 const skillPath = join(baseDir, "skill", "SKILL.md");
 
-const RELEVANT_PROMPT = /\b(github|gh cli|pr |pull request|issue|repo|release|workflow|gist)\b/i;
+/**
+ * Matches prompts that mention GitHub-flavored work — the documented
+ * per-turn guidance trigger ("when a prompt mentions GitHub, PRs, issues,
+ * repos, releases, workflows, or gists"). Singular and plural forms both
+ * match; words inside larger words ("prepare", "republic") do not.
+ * Exported so the wiring tests pin the real trigger, not a copy.
+ */
+export const RELEVANT_PROMPT =
+	/\b(github|gh cli|prs?|pull requests?|issues?|repos?|releases?|workflows?|gists?)\b/i;
 
 /** Canonical flat call-shape example — single source of truth for all prompt surfaces. */
 export const GH_CALL_EXAMPLE = {

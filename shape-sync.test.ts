@@ -81,6 +81,13 @@ const helpCache = new Map<string, HelpInfo>();
 /** All-caps flush-left section headers in gh help output. */
 const SECTION_HEADER = /^[A-Z][A-Z ]*$/;
 
+/**
+ * gh built-in aliases (e.g. `cs` → `codespace`): the alias resolves and runs,
+ * but `--help` prints the CANONICAL command in its USAGE line — so the
+ * expected usage prefix must be canonicalized or the entry reads as missing.
+ */
+const GH_ALIASES: Record<string, string> = { cs: "codespace" };
+
 function parseHelp(words: readonly string[], exitCode: number, text: string): HelpInfo {
 	const lines = text.split("\n");
 	const usageIndex = lines.findIndex((line) => line.trim() === "USAGE");
@@ -101,7 +108,8 @@ function parseHelp(words: readonly string[], exitCode: number, text: string): He
 			for (const word of line.split(/[\s,]+/)) if (word) jsonFields.add(word);
 		}
 	}
-	const path = `gh ${words.join(" ")}`;
+	const canonical = words.map((word) => GH_ALIASES[word] ?? word);
+	const path = `gh ${canonical.join(" ")}`;
 	const exists = exitCode === 0 && (usage === null || usage.startsWith(path));
 	return { exists, usage, flags, jsonFields };
 }

@@ -11,10 +11,11 @@ import { Type } from "typebox";
 
 /**
  * Commands that are destructive/unrecoverable — refused unless forceDangerous
- * is set. Exported so the shape-sync harness validates this table against the
- * installed gh CLI instead of a duplicate list.
+ * is set. `cs delete` is gh's built-in alias for `codespace delete` and must
+ * not bypass the gate. Exported so the shape-sync harness validates this
+ * table against the installed gh CLI instead of a duplicate list.
  */
-export const DANGEROUS_COMMANDS = ["repo delete", "release delete", "codespace delete"];
+export const DANGEROUS_COMMANDS = ["repo delete", "release delete", "codespace delete", "cs delete"];
 
 /** Regex matching gh's not-authenticated error messages. */
 const NOT_AUTHED = /not logged in|authentication required|auth.*fail/i;

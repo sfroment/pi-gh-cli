@@ -417,6 +417,24 @@ describe("assertSafeCommand", () => {
 		).toThrow(/codespace delete/);
 	});
 
+	test("12b. cs delete (built-in gh alias for codespace delete) is refused", () => {
+		expect(() =>
+			assertSafeCommand({ subcommand: "cs delete" }),
+		).toThrow(/cs delete/);
+	});
+
+	test("12c. codespace delete with forceDangerous is allowed", () => {
+		expect(() =>
+			assertSafeCommand({ subcommand: "codespace delete", forceDangerous: true }),
+		).not.toThrow();
+	});
+
+	test("12d. cs delete with forceDangerous is allowed", () => {
+		expect(() =>
+			assertSafeCommand({ subcommand: "cs delete", forceDangerous: true }),
+		).not.toThrow();
+	});
+
 	test("13. run delete is allowed (re-runnable, not irreversible)", () => {
 		expect(() =>
 			assertSafeCommand({ subcommand: "run delete" }),
@@ -596,6 +614,14 @@ describe("runGh", () => {
 		await expect(
 			runGh({ subcommand: "repo delete" }, exec),
 		).rejects.toThrow(/repo delete/);
+		expect(exec.calls).toHaveLength(0);
+	});
+
+	test("6b. release delete, codespace delete, and the cs alias are refused before exec is called", async () => {
+		const exec = makeFakeExec({ stdout: "", code: 0 });
+		for (const subcommand of ["release delete", "codespace delete", "cs delete"]) {
+			await expect(runGh({ subcommand }, exec)).rejects.toThrow(new RegExp(subcommand));
+		}
 		expect(exec.calls).toHaveLength(0);
 	});
 

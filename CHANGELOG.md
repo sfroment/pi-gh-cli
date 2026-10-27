@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Opt-in live lifecycle test (`TEST_LIVE=1`): creates a private scratch repo, runs the PR (create/view/edit/comment/close), issue (create/comment/close), and release (create/view) lifecycles through the documented shapes, then tears the scratch repo down through the danger-gated delete (`forceDangerous: true` + `repo delete`) and verifies its absence by re-listing. Requires an authed gh with the `delete_repo` scope (`gh auth refresh -h github.com -s delete_repo`).
 
 ### Fixed
+- `cs delete` — gh's built-in alias for `codespace delete` — is now refused like the canonical command; the alias previously bypassed the forceDangerous gate.
 - Guidance drift found by the shape-sync and live lifecycle runs (all in `skill/SKILL.md`):
   - `release view`: the tag is a positional (`subcommand: "release view v1.0.0"`), not `args: { tag: ... }` — `--tag` does not exist.
   - `search repos|issues|code|commits` (and `search prs`): the query is a positional in the subcommand, not `args: { query: ... }` — `--query` does not exist; `search commits` additionally requires search text (qualifiers-only queries are rejected).

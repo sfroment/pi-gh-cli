@@ -137,7 +137,7 @@ For any subcommand not listed, run `gh <subcommand> --help` via bash to see its 
 
 - **`args` is an object, never an array** — pass `{ state: "open" }`, not `["--state","open"]`. The tool tolerates an array but it's not the correct shape.
 - **Never nest parameters inside `args`** — `subcommand`, `jsonFields`, `jq`, `repo`, `limit` are top-level siblings of `args`, not keys inside it.
-- **`repo delete`, `release delete`, and `codespace delete` are refused** by the tool unless `forceDangerous: true` is set. Always confirm with the user before using it — these operations are unrecoverable.
+- **`repo delete`, `release delete`, and `codespace delete` are refused** by the tool unless `forceDangerous: true` is set (gh's built-in `cs delete` alias included). Always confirm with the user before using it — these operations are unrecoverable.
 - **Auth failures** — if the tool returns "not authenticated", tell the user to run `gh auth login` via bash. Do NOT retry the tool in a loop.
 - **gh not installed** — if the tool reports `gh` is not on PATH, tell the user to install it from https://cli.github.com/ or via `brew install gh`.
 - **`--json` must precede `--jq`** — the tool handles this automatically (jsonFields → `--json`, then jq → `--jq`), but if you pass raw args via the `args` map, ensure you don't inject `--jq` before `--json`.

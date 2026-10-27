@@ -9,8 +9,12 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Type } from "typebox";
 
-/** Commands that are destructive/unrecoverable — refused unless forceDangerous is set. */
-const DANGEROUS_COMMANDS = ["repo delete", "release delete", "codespace delete"];
+/**
+ * Commands that are destructive/unrecoverable — refused unless forceDangerous
+ * is set. `cs delete` is gh's built-in alias for `codespace delete` and must
+ * not bypass the gate.
+ */
+const DANGEROUS_COMMANDS = ["repo delete", "release delete", "codespace delete", "cs delete"];
 
 /** Regex matching gh's not-authenticated error messages. */
 const NOT_AUTHED = /not logged in|authentication required|auth.*fail/i;

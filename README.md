@@ -88,6 +88,10 @@ View a specific issue:
 ```bash
 bun test          # pretest links pi runtime deps automatically
 bunx tsc --noEmit # type-check
+
+# Opt-in live checks (skipped by default; needs gh on PATH + gh auth login):
+# the 3 integration tests + the 13-command read-only smoke in smoke.test.ts
+TEST_INTEGRATION=1 bun test
 ```
 
 ## License

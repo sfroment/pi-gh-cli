@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Opt-in live smoke (`smoke.test.ts`, gated by `TEST_INTEGRATION=1`, skipped by default so credential-less CI stays green): every documented read-only command — auth status, repo/pr/issue/release list + view, run list, workflow list + view, gist list — executed live against the authenticated account, all read-only targets.
+
 ### Fixed
 - `limit` on `view` commands is now stripped from argv and executed (noted in the output, `limitStripped` detail) instead of failing the call — the model's intent (fetch the item) is unambiguous.
 - `timeoutSeconds` above 120 that is a multiple of 1000 is treated as milliseconds (models echo CLI-style `60000`); the schema `maximum` is gone, the runtime clamp stays.

@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Opt-in live contract probes (`contract.test.ts`, gated by `TEST_INTEGRATION=1`, skipped by default so credential-less CI stays green): the structured-output surface pinned against the real gh CLI — `jsonFields` → `--json` preceding `jq` → `--jq` with projected rows, `limit` translated on list forms and stripped-and-noted on view forms, and the args flag shapes (boolean true → bare flag, `false`/`null` skipped, string/number → `--flag value` pair, array → repeated pairs). Read-only targets only.
+
 ### Fixed
 - `limit` on `view` commands is now stripped from argv and executed (noted in the output, `limitStripped` detail) instead of failing the call — the model's intent (fetch the item) is unambiguous.
 - `timeoutSeconds` above 120 that is a multiple of 1000 is treated as milliseconds (models echo CLI-style `60000`); the schema `maximum` is gone, the runtime clamp stays.

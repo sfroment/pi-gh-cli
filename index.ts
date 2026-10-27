@@ -9,8 +9,12 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Type } from "typebox";
 
-/** Commands that are destructive/unrecoverable — refused unless forceDangerous is set. */
-const DANGEROUS_COMMANDS = ["repo delete", "release delete", "codespace delete"];
+/**
+ * Commands that are destructive/unrecoverable — refused unless forceDangerous
+ * is set. Exported so the shape-sync harness validates this table against the
+ * installed gh CLI instead of a duplicate list.
+ */
+export const DANGEROUS_COMMANDS = ["repo delete", "release delete", "codespace delete"];
 
 /** Regex matching gh's not-authenticated error messages. */
 const NOT_AUTHED = /not logged in|authentication required|auth.*fail/i;
@@ -21,9 +25,10 @@ const NOT_AUTHED = /not logged in|authentication required|auth.*fail/i;
  * "unknown flag: --limit", which gives the model nothing to recover with.
  * `codespace view`, `ruleset view`, and `project view` verified against the
  * real gh CLI — they exist and take no --limit. stripLimitForViewCommands
- * removes the flag and runs instead of failing the call.
+ * removes the flag and runs instead of failing the call. Exported so the
+ * shape-sync harness re-verifies the table against the installed CLI.
  */
-const NO_LIMIT_SUBCOMMANDS = new Set([
+export const NO_LIMIT_SUBCOMMANDS = new Set([
 	"pr view",
 	"issue view",
 	"run view",

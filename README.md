@@ -90,6 +90,15 @@ bun test          # pretest links pi runtime deps automatically
 bunx tsc --noEmit # type-check
 ```
 
+Opt-in shape-sync check — validates every documented gh command shape (skill,
+README, tool description: verbs, flags, translation-parameter argv) against the
+installed gh CLI via `--help` only (no auth, no network, no mutations). The
+default `bun test` run stays green; the check skips cleanly without a gh CLI:
+
+```bash
+bun run test:shape-sync   # GH_SHAPE_SYNC=1 bun test shape-sync.test.ts
+```
+
 ## License
 
 GPL-3.0

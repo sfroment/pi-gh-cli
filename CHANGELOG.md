@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Opt-in shape-sync harness (`shape-sync.test.ts`, `GH_SHAPE_SYNC=1 bun test` or `bun run test:shape-sync`): mechanically validates every documented gh command shape — skill "Common gh subcommands" bullets, "Full subcommand surface" verbs, "Verification"/"Structured output"/README/`GH_CALL_EXAMPLE` tool-param shapes, the `NO_LIMIT_SUBCOMMANDS` view forms, the `DANGEROUS_COMMANDS` trio, and the `repo`-override pitfall claims — against the installed CLI's `--help` (no auth, no network, no mutations). Skips cleanly without a gh CLI; reports each mismatch with its `file:line` source. The default `bun test` run stays green.
+
 ### Fixed
 - `limit` on `view` commands is now stripped from argv and executed (noted in the output, `limitStripped` detail) instead of failing the call — the model's intent (fetch the item) is unambiguous.
 - `timeoutSeconds` above 120 that is a multiple of 1000 is treated as milliseconds (models echo CLI-style `60000`); the schema `maximum` is gone, the runtime clamp stays.
@@ -14,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A bare primitive `args` (out-schema junk that can reach the tool as raw JSON) is now dropped instead of serializing into per-character `--0 o` flags.
 
 ### Changed
+- `NO_LIMIT_SUBCOMMANDS` and `DANGEROUS_COMMANDS` are now exported so the shape-sync harness validates the tool's internal tables against the installed CLI instead of a duplicate list.
 - Internal, no behavior change: the typed-flag argv serialization rule inside `buildArgv` (skip falsy · bare flag for `true` · repeated pairs for arrays · flag+String otherwise) is now a pure seam, `flagValueTokens` (buildArgv CRAP 16 → 9, the seam at 7, both at 100% line coverage) — every module now sits at CRAP ≤ 10.
 - The mutation-testing ledger is closed: the four killable survivors are killed by new pins (empty `jsonFields` emits no `--json`; single-char and whitespace-only output boundaries in `formatOutput`), and the remaining sixteen are hand-proven equivalent (loop-bound pairs that can only form `"word undefined"`, `??` operators where the only falsy-difference value produces the same result, empty-object-vs-undefined args returns that serialize identically through every consumer, and a timeout boundary made inert by its `% 1000` conjunct).
 - Internal, no behavior change: `runGh` is now single-level orchestration over three pure seams — `coerceTimeoutSeconds` (timeout policy), `isAuthFailure` (auth-failure predicate), `buildCommandResult` (result assembly) — with the return shape named `GhToolResult` (runGh and each seam at CRAP ≤ 10 with 100% line coverage).

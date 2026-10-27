@@ -1,5 +1,7 @@
-import { assertSafeCommand, buildArgv, formatOutput, runGh, stripLimitForViewCommands, GH_GUIDANCE, GH_CALL_EXAMPLE, GH_ARGS_DESCRIPTION, GH_SUBCOMMAND_DESCRIPTION, type ExecResult, type GhExec, type GhParams, type RawGhParams } from "./index.ts";
+import ghExtension, { assertSafeCommand, buildArgv, formatOutput, runGh, stripLimitForViewCommands, GH_GUIDANCE, GH_CALL_EXAMPLE, GH_ARGS_DESCRIPTION, GH_SUBCOMMAND_DESCRIPTION, RELEVANT_PROMPT, type ExecResult, type GhExec, type GhParams, type RawGhParams } from "./index.ts";
 import { describe, expect, mock, test } from "bun:test";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 
 describe("buildArgv", () => {
 	test("1. subcommand split on spaces", () => {
@@ -525,6 +527,122 @@ describe("GH_GUIDANCE content", () => {
 		expect(GH_GUIDANCE).toContain("Only valid on list-style commands");
 		expect(GH_GUIDANCE).toContain("unknown flag: --limit");
 		expect(GH_GUIDANCE).toContain("the tool strips the flag and runs");
+	});
+});
+
+// --- Extension wiring (issue #32 audit) ---
+// The guidance TEXT was pinned above; these pin the wiring the README
+// documents: the bundled skill discovery, the per-turn prompt guidance
+// injection, and the registered tool's typed surface — through a fake
+// ExtensionAPI, so the extension function itself is exercised.
+
+describe("extension wiring", () => {
+	type Handler = (event?: unknown) => unknown;
+
+	/** A minimal fake pi: captures on() handlers and registerTool configs. */
+	function fakePi() {
+		const handlers: Record<string, Handler> = {};
+		const tools: Array<Record<string, unknown>> = [];
+		const pi: {
+			on: (name: string, handler: Handler) => void;
+			registerTool: (definition: Record<string, unknown>) => void;
+			exec?: (cmd: string, args: string[]) => Promise<ExecResult>;
+		} = {
+			on: (name: string, handler: Handler) => {
+				handlers[name] = handler;
+			},
+			registerTool: (definition: Record<string, unknown>) => {
+				tools.push(definition);
+			},
+		};
+		return { handlers, tools, pi };
+	}
+
+	test("W1. registers the gh tool with the documented typed parameters", () => {
+		const { pi, tools } = fakePi();
+		ghExtension(pi as never);
+		expect(tools).toHaveLength(1);
+		const tool = tools[0];
+		expect(tool.name).toBe("gh");
+		expect(String(tool.description)).toContain("Never nest");
+		const props = (tool.parameters as { properties: Record<string, unknown> }).properties;
+		for (const key of [
+			"subcommand",
+			"args",
+			"repo",
+			"jsonFields",
+			"jq",
+			"limit",
+			"timeoutSeconds",
+			"forceDangerous",
+		]) {
+			expect(props[key]).toBeDefined();
+		}
+	});
+
+	test("W2. resources_discover exposes the bundled SKILL.md", () => {
+		const { handlers, pi } = fakePi();
+		ghExtension(pi as never);
+		const discovered = handlers["resources_discover"]() as { skillPaths: string[] };
+		expect(discovered.skillPaths).toHaveLength(1);
+		expect(discovered.skillPaths[0].endsWith(join("skill", "SKILL.md"))).toBe(true);
+		expect(existsSync(discovered.skillPaths[0])).toBe(true);
+	});
+
+	test("W3. before_agent_start injects the guidance only for GitHub-mentioning prompts", () => {
+		const { handlers, pi } = fakePi();
+		ghExtension(pi as never);
+		const inject = handlers["before_agent_start"] as Handler;
+		const on = inject({ prompt: "merge the PR", systemPrompt: "base" }) as {
+			systemPrompt: string;
+		};
+		expect(on.systemPrompt).toContain("GitHub CLI (gh) guidance");
+		expect(on.systemPrompt).toContain("base"); // original prompt preserved
+		expect(inject({ prompt: "what's for dinner?", systemPrompt: "base" })).toBeUndefined();
+	});
+
+	test("W4. the registered tool's execute delegates to runGh through pi.exec", async () => {
+		const { tools, pi } = fakePi();
+		const calls: Array<[string, string[]]> = [];
+		pi.exec = (cmd: string, args: string[]) => {
+			calls.push([cmd, args]);
+			return Promise.resolve({ stdout: "ok", code: 0 });
+		};
+		ghExtension(pi as never);
+		const execute = tools[0].execute as (
+			toolCallId: string,
+			params: RawGhParams,
+			signal?: AbortSignal,
+		) => Promise<unknown>;
+		const res = (await execute("id", { subcommand: "repo list" }, undefined)) as {
+			isError: boolean;
+		};
+		expect(res.isError).toBe(false);
+		expect(calls).toHaveLength(1);
+		expect(calls[0][0]).toBe("gh");
+		expect(calls[0][1]).toEqual(["repo", "list"]);
+	});
+
+	test("W5. RELEVANT_PROMPT matches the documented trigger words, singular and plural", () => {
+		const on = [
+			"check GitHub",
+			"the gh cli",
+			"merge the PR",
+			"open PRs",
+			"pull request",
+			"triage my issues",
+			"show issue 42",
+			"list my repos",
+			"cut a release",
+			"the releases page",
+			"is the workflow green?",
+			"workflow runs",
+			"my gists",
+			"a gist I made",
+		];
+		for (const prompt of on) expect(RELEVANT_PROMPT.test(prompt)).toBe(true);
+		const off = ["what's for dinner?", "prepare the presentation", "republic of pizza", "problem solver"];
+		for (const prompt of off) expect(RELEVANT_PROMPT.test(prompt)).toBe(false);
 	});
 });
 

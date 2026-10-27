@@ -843,3 +843,184 @@ describe("integration (real gh)", () => {
 		expect(res.isError).toBe(false);
 	});
 });
+
+// --- Live lifecycle test (opt-in) ---
+// Gated by TEST_LIVE=1 — heavier than TEST_INTEGRATION: this MUTATES the real
+// account. It creates a private scratch repo (pi-gh-cli-test-<ts>-<rand>),
+// runs the PR (create/view/edit/comment/close), issue (create/comment/close),
+// and release (create/view-on-tag) lifecycles through the documented shapes,
+// then tears the scratch repo down through the danger-gated delete
+// (forceDangerous: true) and verifies its absence by re-listing. Real repos
+// are never targets. Requires an authed gh holding the delete_repo scope
+// (gh auth refresh -h github.com -s delete_repo) — without it the finally
+// block fails loudly with the leftover scratch repo's name.
+
+describe("live lifecycle (real GitHub, opt-in)", () => {
+	test.skipIf(!process.env.TEST_LIVE)(
+		"scratch repo: PR, issue, release lifecycles + danger-gated delete",
+		async () => {
+			const rand = Math.random().toString(36).slice(2, 8);
+			const name = `pi-gh-cli-test-${Date.now().toString(36)}-${rand}`;
+
+			/** Run one gh call through the tool pipeline; require exit 0, return text. */
+			async function run0(params: RawGhParams): Promise<string> {
+				const res = await runGh(params, realExec);
+				expect(res.isError, JSON.stringify(res.content)).toBe(false);
+				return res.content[0].text;
+			}
+
+			/** The output payload under the Command/Exit-code preamble. */
+			const payloadOf = (text: string): string => {
+				const body = text.slice(text.indexOf("\n\n") + 2);
+				const stderrAt = body.indexOf("\n\nstderr:\n");
+				return stderrAt === -1 ? body : body.slice(0, stderrAt);
+			};
+
+			/** Run one gh call; require exit 0 and parse the JSON payload. */
+			async function json0(params: RawGhParams): Promise<any> {
+				return JSON.parse(payloadOf(await run0(params)));
+			}
+
+			const owner = await json0({ subcommand: "api user", jq: ".login" });
+			const full = `${owner}/${name}`;
+			let created = false;
+
+			try {
+				// Scratch repo: private, seeded with an initial commit on main.
+				await run0({
+					subcommand: `repo create ${name}`,
+					args: { private: true, addReadme: true },
+				});
+				created = true;
+
+				// Branch + commit: feature ref off main, then a new file committed onto it.
+				const mainSha = await json0({
+					subcommand: `api repos/${full}/git/ref/heads/main`,
+					jq: ".object.sha",
+				});
+				await run0({
+					subcommand: `api repos/${full}/git/refs`,
+					args: { method: "POST", field: ["ref=refs/heads/feat/lifecycle-proof", `sha=${mainSha}`] },
+				});
+				const content = Buffer.from("lifecycle proof\n").toString("base64");
+				await run0({
+					subcommand: `api repos/${full}/contents/proof.txt`,
+					args: {
+						method: "PUT",
+						field: ["message=feat: lifecycle proof", `content=${content}`, "branch=feat/lifecycle-proof"],
+					},
+				});
+
+				// PR lifecycle — documented shapes.
+				const prUrl = await run0({
+					subcommand: "pr create",
+					args: {
+						title: "feat: lifecycle proof",
+						body: "live lifecycle test",
+						base: "main",
+						head: "feat/lifecycle-proof",
+					},
+					repo: full,
+				});
+				const pr = Number(prUrl.match(/\/pull\/(\d+)/)?.[1]);
+				expect(pr).toBeGreaterThan(0);
+				expect(await json0({
+					subcommand: `pr view ${pr}`,
+					repo: full,
+					jsonFields: ["number", "title", "state"],
+				})).toMatchObject({ number: pr, state: "OPEN" });
+
+				await run0({
+					subcommand: `pr edit ${pr}`,
+					args: { title: "feat: lifecycle proof (edited)" },
+					repo: full,
+				});
+				expect(await json0({
+					subcommand: `pr view ${pr}`,
+					repo: full,
+					jsonFields: ["title", "state"],
+				})).toMatchObject({ title: "feat: lifecycle proof (edited)", state: "OPEN" });
+
+				await run0({
+					subcommand: `pr comment ${pr}`,
+					args: { body: "live lifecycle comment" },
+					repo: full,
+				});
+				await run0({ subcommand: `pr close ${pr}`, repo: full });
+				expect(await json0({
+					subcommand: `pr view ${pr}`,
+					repo: full,
+					jsonFields: ["state"],
+				})).toMatchObject({ state: "CLOSED" });
+
+				// Issue lifecycle — documented shapes.
+				const issueUrl = await run0({
+					subcommand: "issue create",
+					args: { title: "Bug: scratch lifecycle verification", body: "live lifecycle test" },
+					repo: full,
+				});
+				const issue = Number(issueUrl.match(/\/issues\/(\d+)/)?.[1]);
+				expect(issue).toBeGreaterThan(0);
+				await run0({
+					subcommand: `issue comment ${issue}`,
+					args: { body: "live lifecycle comment" },
+					repo: full,
+				});
+				await run0({ subcommand: `issue close ${issue}`, repo: full });
+				expect(await json0({
+					subcommand: `issue view ${issue}`,
+					repo: full,
+					jsonFields: ["number", "state"],
+				})).toMatchObject({ number: issue, state: "CLOSED" });
+
+				// Release on a tag: tag ref on the feature head, then the release.
+				const headSha = await json0({
+					subcommand: `api repos/${full}/git/ref/heads/feat/lifecycle-proof`,
+					jq: ".object.sha",
+				});
+				await run0({
+					subcommand: `api repos/${full}/git/refs`,
+					args: { method: "POST", field: ["ref=refs/tags/v0.0.1", `sha=${headSha}`] },
+				});
+				await run0({
+					subcommand: "release create v0.0.1",
+					args: { title: "v0.0.1 lifecycle proof", notes: "live lifecycle release" },
+					repo: full,
+				});
+				expect(await json0({
+					subcommand: "release view v0.0.1",
+					repo: full,
+					jsonFields: ["tagName", "name"],
+				})).toMatchObject({ tagName: "v0.0.1", name: "v0.0.1 lifecycle proof" });
+
+				// The danger gate holds: the delete is refused before gh runs.
+				await expect(
+					runGh({ subcommand: `repo delete ${full}`, args: { yes: true } }, realExec),
+				).rejects.toThrow(/Refusing `repo delete`/);
+			} finally {
+				// Teardown through the danger-gated path — forceDangerous opts in.
+				if (created) {
+					const res = await runGh(
+						{ subcommand: `repo delete ${full}`, args: { yes: true }, forceDangerous: true },
+						realExec,
+					);
+					expect(
+						res.isError,
+						`scratch repo ${full} was NOT deleted — delete it manually`,
+					).toBe(false);
+				}
+			}
+
+			// Absence verified by re-listing, plus a 404 on the direct view.
+			const names = (await json0({
+				subcommand: "repo list",
+				args: { limit: 100 },
+				jsonFields: ["name"],
+			})).map((r: { name: string }) => r.name);
+			expect(names).not.toContain(name);
+			const gone = await runGh({ subcommand: `repo view ${full}` }, realExec);
+			expect(gone.isError).toBe(true);
+		},
+		120_000,
+	);
+});

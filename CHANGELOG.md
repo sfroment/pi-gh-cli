@@ -7,7 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Opt-in live lifecycle test (`TEST_LIVE=1`): creates a private scratch repo, runs the PR (create/view/edit/comment/close), issue (create/comment/close), and release (create/view) lifecycles through the documented shapes, then tears the scratch repo down through the danger-gated delete (`forceDangerous: true` + `repo delete`) and verifies its absence by re-listing. Requires an authed gh with the `delete_repo` scope (`gh auth refresh -h github.com -s delete_repo`).
+
 ### Fixed
+- Skill drift found by the live lifecycle run: `release view` takes the tag as a positional argument (`release view v1.0.0`) — the documented `--tag` flag is rejected by gh; the skill now documents the positional shape, and the previously undocumented `pr edit N` is added to the PR section.
 - `limit` on `view` commands is now stripped from argv and executed (noted in the output, `limitStripped` detail) instead of failing the call — the model's intent (fetch the item) is unambiguous.
 - `timeoutSeconds` above 120 that is a multiple of 1000 is treated as milliseconds (models echo CLI-style `60000`); the schema `maximum` is gone, the runtime clamp stays.
 - The missing-`subcommand` error now states that `subcommand` is not remembered between calls.

@@ -55,7 +55,7 @@ This produces `gh pr list --repo owner/repo --json number,title,state,author --j
 
 - `repo list` — list your repos (`args: { limit: 10 }`).
 - `repo view OWNER/REPO` — view repo details (`args: { web: true }` to open in browser).
-- `repo clone OWNER/REPO` — clone a repo (`args: { depth: 1 }` for shallow).
+- `repo clone OWNER/REPO` — clone a repo (git flags go after `--`: `subcommand: "repo clone OWNER/REPO -- --depth 1"` for shallow).
 - `repo create NAME` — create a new repo (`args: { public: true }` or `private: true`).
 - `repo fork OWNER/REPO` — fork a repo.
 - `repo sync` — sync a fork with its upstream.
@@ -68,7 +68,7 @@ This produces `gh pr list --repo owner/repo --json number,title,state,author --j
 - `pr merge N` — merge a PR (`args: { squash: true }` or `merge: true` or `rebase: true`).
 - `pr diff N` — show the diff for a PR.
 - `pr checkout N` — check out a PR locally.
-- `pr review N` — review a PR (`args: { approve: true }` or `request_changes: true, body: "comment" }`).
+- `pr review N` — review a PR (`args: { approve: true }` or `request-changes: true, body: "comment" }` — the flag is `request-changes`, with a dash).
 - `pr comment N` — comment on a PR (`args: { body: "comment text" }`).
 - `pr close N` — close a PR.
 - `pr ready N` — mark a draft PR as ready for review.
@@ -85,7 +85,7 @@ This produces `gh pr list --repo owner/repo --json number,title,state,author --j
 ### Releases
 
 - `release list` — list releases.
-- `release view` — view latest release (`args: { tag: "v1.0.0" }` for a specific tag).
+- `release view TAG` — view a release (the tag is a positional, not a flag: `subcommand: "release view v1.0.0"`; omit the tag for the latest release).
 - `release create TAG` — create a release (`args: { title: "Release title", notes: "changelog", draft: true }`).
 - `release delete TAG` — delete a release. **Requires `forceDangerous: true`.**
 - `release download TAG` — download release assets.
@@ -100,11 +100,11 @@ This produces `gh pr list --repo owner/repo --json number,title,state,author --j
 
 ### Search
 
-- `search repos` — search repositories (`args: { query: "language:typescript" }`).
-- `search issues` — search issues (`args: { query: "repo:owner/repo is:issue is:open" }`).
-- `search prs` — search pull requests.
-- `search code` — search code (`args: { query: "func main repo:owner/repo" }`).
-- `search commits` — search commits.
+- `search repos QUERY` — search repositories (the query is a positional, not a flag: `subcommand: "search repos language:typescript"`).
+- `search issues QUERY` — search issues (`subcommand: "search issues repo:owner/repo is:issue is:open"`).
+- `search prs QUERY` — search pull requests (`subcommand: "search prs is:open"`).
+- `search code QUERY` — search code (`subcommand: "search code func main repo:owner/repo"`).
+- `search commits QUERY` — search commits (`subcommand: "search commits repo:owner/repo"`).
 
 ### Raw API
 
@@ -117,13 +117,13 @@ The categories above cover the common cases. gh has many more top-level subcomma
 - `gist` — manage gists (create, list, view, clone, edit, delete).
 - `codespace` — manage codespaces (create, list, view, ssh, cp, stop, delete).
 - `secret` / `variable` — manage repo/org Actions secrets and variables.
-- `org` — organization management (list, members, teams).
+- `org` — organization management (list).
 - `label` — manage repo labels (list, create, edit, delete, clone).
 - `project` / `discussion` — GitHub Projects and Discussions (limited CLI support; prefer `api`).
 - `run` / `workflow` — Actions runs and workflows (covered under Actions / Workflows).
 - `release` — releases (covered under Releases).
 - `cache` — manage Actions cache.
-- `ruleset` / `rulesets` — repo/org rulesets.
+- `ruleset` — view repo/org rulesets.
 - `extension` — manage gh extensions (install, list, upgrade).
 - `alias` / `config` — CLI aliases and config (`gh config get editor`).
 - `auth` — authentication (`gh auth status`, `gh auth login`, `gh auth refresh`).
@@ -143,7 +143,7 @@ For any subcommand not listed, run `gh <subcommand> --help` via bash to see its 
 - **`--json` must precede `--jq`** — the tool handles this automatically (jsonFields → `--json`, then jq → `--jq`), but if you pass raw args via the `args` map, ensure you don't inject `--jq` before `--json`.
 - **Use `jsonFields` + `jq` for structured output** — the default text output is hard to parse. Pass `jsonFields: ["number", "title", "state"]` and optionally a `jq` expression for clean, parseable results.
 - **`subcommand` is split on whitespace** — `"issue view 42"` becomes `["issue", "view", "42"]`. Do not quote subcommands.
-- **`repo` override** — if you pass `repo: "owner/repo"`, it adds `--repo owner/repo` to the command. This works for any subcommand, even when operating on a different repo than the cwd.
+- **`repo` override** — passing `repo: "owner/repo"` adds `--repo owner/repo` to the command. Accepted by repo-scoped commands (`pr`, `issue`, `release`, `run`, `workflow`, `search issues`, `search prs`, `search code`, `search commits`, `label`, `secret`, `variable`, `cache`, `codespace list`, `ruleset`, `browse`); rejected with `unknown flag: --repo` by account-wide commands (`repo list`, `search repos`, `org list`, `gist list`, `auth status`, `config get`, `api`) and by commands whose target repo is a positional (`repo view`, `repo clone`, `repo create`) — put the target in the subcommand instead.
 - **Large output is truncated** — the tool caps output at 2000 lines / 50KB. Use `limit` to cap results proactively.
 
 ## Verification

@@ -11,6 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Opt-in shape-sync harness (`shape-sync.test.ts`, `GH_SHAPE_SYNC=1 bun test` or `bun run test:shape-sync`): mechanically validates every documented gh command shape — skill "Common gh subcommands" bullets, "Full subcommand surface" verbs, "Verification"/"Structured output"/README/`GH_CALL_EXAMPLE` tool-param shapes, the `NO_LIMIT_SUBCOMMANDS` view forms, the `DANGEROUS_COMMANDS` trio, and the `repo`-override pitfall claims — against the installed CLI's `--help` (no auth, no network, no mutations). Skips cleanly without a gh CLI; reports each mismatch with its `file:line` source. The default `bun test` run stays green.
 
 ### Fixed
+- Guidance drift found by the first shape-sync run (all in `skill/SKILL.md`):
+  - `release view`: the tag is a positional (`subcommand: "release view v1.0.0"`), not `args: { tag: ... }` — `--tag` does not exist.
+  - `search repos|issues|code|commits` (and `search prs`): the query is a positional in the subcommand, not `args: { query: ... }` — `--query` does not exist.
+  - `repo clone`: `--depth` is a git flag passed after `--` (`subcommand: "repo clone OWNER/REPO -- --depth 1"`), not an `args` entry.
+  - `pr review`: the flag is `request-changes` (dash), not `request_changes`.
+  - Full-surface list: `rulesets` and `org members`/`org teams` do not exist on the installed CLI — `ruleset` and `org list` are the real shapes.
+  - The `repo` override pitfall claimed `--repo` "works for any subcommand"; it now names the repo-scoped commands that accept it and the account-wide/positional-target ones that reject it with `unknown flag: --repo`.
 - `limit` on `view` commands is now stripped from argv and executed (noted in the output, `limitStripped` detail) instead of failing the call — the model's intent (fetch the item) is unambiguous.
 - `timeoutSeconds` above 120 that is a multiple of 1000 is treated as milliseconds (models echo CLI-style `60000`); the schema `maximum` is gone, the runtime clamp stays.
 - The missing-`subcommand` error now states that `subcommand` is not remembered between calls.

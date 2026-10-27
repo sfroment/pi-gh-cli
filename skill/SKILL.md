@@ -101,14 +101,14 @@ This produces `gh pr list --repo owner/repo --json number,title,state,author --j
 ### Search
 
 - `search repos QUERY` — search repositories (the query is a positional, not a flag: `subcommand: "search repos language:typescript"`).
-- `search issues QUERY` — search issues (`subcommand: "search issues repo:owner/repo is:issue is:open"`).
-- `search prs QUERY` — search pull requests (`subcommand: "search prs is:open"`).
-- `search code QUERY` — search code (`subcommand: "search code func main repo:owner/repo"`).
-- `search commits QUERY` — search commits (`subcommand: "search commits repo:owner/repo"`).
+- `search issues QUERY` — search issues (the query is a positional, not a flag: `subcommand: "search issues repo:owner/repo is:issue is:open"`).
+- `search prs QUERY` — search pull requests (the query is a positional, not a flag: `subcommand: "search prs repo:owner/repo is:open"`).
+- `search code QUERY` — search code (the query is a positional, not a flag: `subcommand: "search code func main repo:owner/repo"`).
+- `search commits QUERY` — search commits (the query is a positional, not a flag, and requires search text — qualifiers-only queries are rejected: `subcommand: "search commits refactor repo:owner/repo"`).
 
 ### Raw API
 
-- `api ENDPOINT` — raw GitHub REST/GraphQL API call (`args: { method: "GET" }`; `subcommand: "api repos/owner/repo/issues"`).
+- `api ENDPOINT` — raw GitHub REST/GraphQL API call (`args: { method: "GET" }`; `subcommand: "api repos/owner/repo/issues"`). POST bodies pass as repeated field pairs: `args: { method: "POST", field: ["title=Hello", "body=World"] }`. GraphQL: `subcommand: "api graphql", args: { "raw-field": "query=query { viewer { login } }" }`. `gh api` outputs JSON natively, so `jq` works without `jsonFields` (unlike `search`/`pr`/`issue`, which require `jsonFields` before `jq`).
 
 ### Full subcommand surface
 
@@ -142,7 +142,8 @@ For any subcommand not listed, run `gh <subcommand> --help` via bash to see its 
 - **gh not installed** — if the tool reports `gh` is not on PATH, tell the user to install it from https://cli.github.com/ or via `brew install gh`.
 - **`--json` must precede `--jq`** — the tool handles this automatically (jsonFields → `--json`, then jq → `--jq`), but if you pass raw args via the `args` map, ensure you don't inject `--jq` before `--json`.
 - **Use `jsonFields` + `jq` for structured output** — the default text output is hard to parse. Pass `jsonFields: ["number", "title", "state"]` and optionally a `jq` expression for clean, parseable results.
-- **`subcommand` is split on whitespace** — `"issue view 42"` becomes `["issue", "view", "42"]`. Do not quote subcommands.
+- **`subcommand` is split on whitespace** — `"issue view 42"` becomes `["issue", "view", "42"]`. Do not quote subcommands, and never put flags in `subcommand` (they become stray positional args).
+- **`args` keys always expand to `--key` form** — short-only flags like `-f` must be passed by their long spelling (`raw-field` for `-f`, `field` for `-F`); `--f` is rejected by gh.
 - **`repo` override** — passing `repo: "owner/repo"` adds `--repo owner/repo` to the command. Accepted by repo-scoped commands (`pr`, `issue`, `release`, `run`, `workflow`, `search issues`, `search prs`, `search code`, `search commits`, `label`, `secret`, `variable`, `cache`, `codespace list`, `ruleset`, `browse`); rejected with `unknown flag: --repo` by account-wide commands (`repo list`, `search repos`, `org list`, `gist list`, `auth status`, `config get`, `api`) and by commands whose target repo is a positional (`repo view`, `repo clone`, `repo create`) — put the target in the subcommand instead.
 - **Large output is truncated** — the tool caps output at 2000 lines / 50KB. Use `limit` to cap results proactively.
 

@@ -21,7 +21,7 @@ A [pi coding agent](https://github.com/earendil-works/pi-mono) extension that wr
 - a bundled `SKILL.md` documenting the tool and common `gh` commands
 - per-turn prompt guidance when a prompt mentions GitHub, PRs, issues, repos, releases, workflows, or gists
 - graceful detection of the "not authenticated" failure with actionable guidance
-- a safety guard that refuses `repo delete`, `release delete`, and `codespace delete` (unrecoverable) unless `forceDangerous: true` is set
+- a safety guard that refuses `repo delete`, `release delete`, and `codespace delete` (plus gh's built-in `cs delete` alias) unless `forceDangerous: true` is set
 
 ## Why not MCP?
 
@@ -86,23 +86,44 @@ View a specific issue:
 ## Development
 
 ```bash
-bun test          # pretest links pi runtime deps automatically
+bun install
+bun test          # default suite — green without gh or credentials
 bunx tsc --noEmit # type-check
-
-# Opt-in live checks (skipped by default; needs gh on PATH + gh auth login):
-# the 3 integration tests, the read-only smoke in smoke.test.ts,
-# and the structured-output contract probes in contract.test.ts
-TEST_INTEGRATION=1 bun test
 ```
 
-Opt-in shape-sync check — validates every documented gh command shape (skill,
-README, tool description: verbs, flags, translation-parameter argv) against the
-installed gh CLI via `--help` only (no auth, no network, no mutations). The
-default `bun test` run stays green; the check skips cleanly without a gh CLI:
+## Verification
+
+The full verification suite. Every documented command and behavior maps to a
+check that proves it — the coverage matrix and the explicit exclusions live in
+[docs/coverage-audit.md](docs/coverage-audit.md).
 
 ```bash
-bun run test:shape-sync   # GH_SHAPE_SYNC=1 bun test shape-sync.test.ts
+# 1. Default suite: unit, translation, tolerance, and wiring tests.
+#    Needs nothing (no gh CLI, no credentials); runs in CI.
+bun test
+
+# 2. Shape-sync: every documented gh shape — verbs, flags, translation argv,
+#    the strip table, the danger list, the repo-override claims — validated
+#    against the installed gh CLI via --help only (no auth, no network, no
+#    mutations). Needs the gh CLI on PATH.
+bun run test:shape-sync
+
+# 3. Live read-only checks: the 3 integration tests, the read-only command
+#    smoke (smoke.test.ts), and the structured-output contract probes
+#    (contract.test.ts), executed against the authenticated account.
+#    Needs gh on PATH + gh auth login. Read-only targets only.
+bun run test:integration
+
+# 4. Live lifecycle (heaviest, opt-in): creates a private scratch repo,
+#    exercises the documented PR/issue/release write paths end to end, then
+#    tears it down through the danger-gated delete and verifies its absence.
+#    Requires the delete_repo scope
+#    (gh auth refresh -h github.com -s delete_repo); self-cleaning.
+bun run test:lifecycle
 ```
+
+Run 1+2 after any change to the guidance or the translation layer; run 3 before
+publishing; run 4 when the write-path shapes change.
 
 ## License
 

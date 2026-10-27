@@ -65,6 +65,7 @@ This produces `gh pr list --repo owner/repo --json number,title,state,author --j
 - `pr list` — list PRs (`args: { state: "open", limit: 10 }`; states: open|closed|merged|all).
 - `pr view N` — view PR details (`args: { web: true }` to open in browser).
 - `pr create` — create a PR (`args: { title: "feat: X", body: "description", base: "main", head: "feature-branch" }`).
+- `pr edit N` — edit a PR (`args: { title: "New title", body: "New body" }`).
 - `pr merge N` — merge a PR (`args: { squash: true }` or `merge: true` or `rebase: true`).
 - `pr diff N` — show the diff for a PR.
 - `pr checkout N` — check out a PR locally.
@@ -85,7 +86,7 @@ This produces `gh pr list --repo owner/repo --json number,title,state,author --j
 ### Releases
 
 - `release list` — list releases.
-- `release view TAG` — view a release (the tag is a positional, not a flag: `subcommand: "release view v1.0.0"`; omit the tag for the latest release).
+- `release view TAG` — view a release. The tag is a positional argument (`subcommand: "release view v1.0.0"`), not a flag — `--tag` is rejected by gh. Without a tag, the latest release is shown.
 - `release create TAG` — create a release (`args: { title: "Release title", notes: "changelog", draft: true }`).
 - `release delete TAG` — delete a release. **Requires `forceDangerous: true`.**
 - `release download TAG` — download release assets.

@@ -100,15 +100,15 @@ This produces `gh pr list --repo owner/repo --json number,title,state,author --j
 
 ### Search
 
-- `search repos` — search repositories (`args: { query: "language:typescript" }`).
-- `search issues` — search issues (`args: { query: "repo:owner/repo is:issue is:open" }`).
-- `search prs` — search pull requests.
-- `search code` — search code (`args: { query: "func main repo:owner/repo" }`).
-- `search commits` — search commits.
+- `search repos` — search repositories (query is positional: `subcommand: "search repos language:typescript"`).
+- `search issues` — search issues (query is positional: `subcommand: "search issues repo:owner/repo is:issue is:open"`).
+- `search prs` — search pull requests (query is positional).
+- `search code` — search code (query is positional: `subcommand: "search code func main repo:owner/repo"`).
+- `search commits` — search commits (query is positional and requires search text — qualifiers-only queries are rejected).
 
 ### Raw API
 
-- `api ENDPOINT` — raw GitHub REST/GraphQL API call (`args: { method: "GET" }`; `subcommand: "api repos/owner/repo/issues"`).
+- `api ENDPOINT` — raw GitHub REST/GraphQL API call (`args: { method: "GET" }`; `subcommand: "api repos/owner/repo/issues"`). POST bodies pass as repeated field pairs: `args: { method: "POST", field: ["title=Hello", "body=World"] }`. GraphQL: `subcommand: "api graphql", args: { "raw-field": "query=query { viewer { login } }" }`. `gh api` outputs JSON natively, so `jq` works without `jsonFields` (unlike `search`/`pr`/`issue`, which require `jsonFields` before `jq`).
 
 ### Full subcommand surface
 
@@ -123,7 +123,7 @@ The categories above cover the common cases. gh has many more top-level subcomma
 - `run` / `workflow` — Actions runs and workflows (covered under Actions / Workflows).
 - `release` — releases (covered under Releases).
 - `cache` — manage Actions cache.
-- `ruleset` / `rulesets` — repo/org rulesets.
+- `ruleset` — repo/org rulesets.
 - `extension` — manage gh extensions (install, list, upgrade).
 - `alias` / `config` — CLI aliases and config (`gh config get editor`).
 - `auth` — authentication (`gh auth status`, `gh auth login`, `gh auth refresh`).
@@ -142,7 +142,8 @@ For any subcommand not listed, run `gh <subcommand> --help` via bash to see its 
 - **gh not installed** — if the tool reports `gh` is not on PATH, tell the user to install it from https://cli.github.com/ or via `brew install gh`.
 - **`--json` must precede `--jq`** — the tool handles this automatically (jsonFields → `--json`, then jq → `--jq`), but if you pass raw args via the `args` map, ensure you don't inject `--jq` before `--json`.
 - **Use `jsonFields` + `jq` for structured output** — the default text output is hard to parse. Pass `jsonFields: ["number", "title", "state"]` and optionally a `jq` expression for clean, parseable results.
-- **`subcommand` is split on whitespace** — `"issue view 42"` becomes `["issue", "view", "42"]`. Do not quote subcommands.
+- **`subcommand` is split on whitespace** — `"issue view 42"` becomes `["issue", "view", "42"]`. Do not quote subcommands, and never put flags in `subcommand` (they become stray positional args).
+- **`args` keys always expand to `--key` form** — short-only flags like `-f` must be passed by their long spelling (`raw-field` for `-f`, `field` for `-F`); `--f` is rejected by gh.
 - **`repo` override** — if you pass `repo: "owner/repo"`, it adds `--repo owner/repo` to the command. This works for any subcommand, even when operating on a different repo than the cwd.
 - **Large output is truncated** — the tool caps output at 2000 lines / 50KB. Use `limit` to cap results proactively.
 

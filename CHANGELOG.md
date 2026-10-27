@@ -9,8 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Opt-in shape-sync harness (`shape-sync.test.ts`, `GH_SHAPE_SYNC=1 bun test` or `bun run test:shape-sync`): mechanically validates every documented gh command shape — skill "Common gh subcommands" bullets, "Full subcommand surface" verbs, "Verification"/"Structured output"/README/`GH_CALL_EXAMPLE` tool-param shapes, the `NO_LIMIT_SUBCOMMANDS` view forms, the `DANGEROUS_COMMANDS` trio, and the `repo`-override pitfall claims — against the installed CLI's `--help` (no auth, no network, no mutations). Skips cleanly without a gh CLI; reports each mismatch with its `file:line` source. The default `bun test` run stays green.
+- Opt-in live smoke (`smoke.test.ts`, gated by `TEST_INTEGRATION=1`, skipped by default so credential-less CI stays green): every documented read-only command — auth status, repo/pr/issue/release list + view, run list, workflow list + view, gist list — executed live against the authenticated account, all read-only targets.
 - Opt-in live lifecycle test (`TEST_LIVE=1`): creates a private scratch repo, runs the PR (create/view/edit/comment/close), issue (create/comment/close), and release (create/view) lifecycles through the documented shapes, then tears the scratch repo down through the danger-gated delete (`forceDangerous: true` + `repo delete`) and verifies its absence by re-listing. Requires an authed gh with the `delete_repo` scope (`gh auth refresh -h github.com -s delete_repo`).
-
 ### Fixed
 - `cs delete` — gh's built-in alias for `codespace delete` — is now refused like the canonical command; the alias previously bypassed the forceDangerous gate.
 - Guidance drift found by the shape-sync and live lifecycle runs (all in `skill/SKILL.md`):
